@@ -9,38 +9,98 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as PatientRouteImport } from './routes/patient'
+import { Route as DoctorRouteImport } from './routes/doctor'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as LoginPatientRouteImport } from './routes/login.patient'
+import { Route as LoginDoctorRouteImport } from './routes/login.doctor'
 
+const PatientRoute = PatientRouteImport.update({
+  id: '/patient',
+  path: '/patient',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DoctorRoute = DoctorRouteImport.update({
+  id: '/doctor',
+  path: '/doctor',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LoginPatientRoute = LoginPatientRouteImport.update({
+  id: '/login/patient',
+  path: '/login/patient',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginDoctorRoute = LoginDoctorRouteImport.update({
+  id: '/login/doctor',
+  path: '/login/doctor',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/doctor': typeof DoctorRoute
+  '/patient': typeof PatientRoute
+  '/login/doctor': typeof LoginDoctorRoute
+  '/login/patient': typeof LoginPatientRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/doctor': typeof DoctorRoute
+  '/patient': typeof PatientRoute
+  '/login/doctor': typeof LoginDoctorRoute
+  '/login/patient': typeof LoginPatientRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/doctor': typeof DoctorRoute
+  '/patient': typeof PatientRoute
+  '/login/doctor': typeof LoginDoctorRoute
+  '/login/patient': typeof LoginPatientRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/doctor' | '/patient' | '/login/doctor' | '/login/patient'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/doctor' | '/patient' | '/login/doctor' | '/login/patient'
+  id:
+    | '__root__'
+    | '/'
+    | '/doctor'
+    | '/patient'
+    | '/login/doctor'
+    | '/login/patient'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  DoctorRoute: typeof DoctorRoute
+  PatientRoute: typeof PatientRoute
+  LoginDoctorRoute: typeof LoginDoctorRoute
+  LoginPatientRoute: typeof LoginPatientRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/patient': {
+      id: '/patient'
+      path: '/patient'
+      fullPath: '/patient'
+      preLoaderRoute: typeof PatientRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/doctor': {
+      id: '/doctor'
+      path: '/doctor'
+      fullPath: '/doctor'
+      preLoaderRoute: typeof DoctorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -48,22 +108,30 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/login/patient': {
+      id: '/login/patient'
+      path: '/login/patient'
+      fullPath: '/login/patient'
+      preLoaderRoute: typeof LoginPatientRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login/doctor': {
+      id: '/login/doctor'
+      path: '/login/doctor'
+      fullPath: '/login/doctor'
+      preLoaderRoute: typeof LoginDoctorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  DoctorRoute: DoctorRoute,
+  PatientRoute: PatientRoute,
+  LoginDoctorRoute: LoginDoctorRoute,
+  LoginPatientRoute: LoginPatientRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
