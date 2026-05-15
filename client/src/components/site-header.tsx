@@ -22,17 +22,38 @@ export function SiteHeader() {
           </span>
           <div className="leading-tight">
             <p className="font-display text-lg font-semibold text-foreground">AyurSutra</p>
-            <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Panchakarma OS</p>
+            <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+              Panchakarma OS
+            </p>
           </div>
         </Link>
 
         <nav className="hidden items-center gap-6 text-sm md:flex">
-          <Link to="/" className="text-muted-foreground transition hover:text-foreground" activeOptions={{ exact: true }} activeProps={{ className: "text-foreground" }}>Home</Link>
+          <Link
+            to="/"
+            className="text-muted-foreground transition hover:text-foreground"
+            activeOptions={{ exact: true }}
+            activeProps={{ className: "text-foreground" }}
+          >
+            Home
+          </Link>
           {session?.role === "doctor" && (
-            <Link to="/doctor" className="text-muted-foreground transition hover:text-foreground" activeProps={{ className: "text-foreground" }}>Doctor Dashboard</Link>
+            <Link
+              to="/doctor"
+              className="text-muted-foreground transition hover:text-foreground"
+              activeProps={{ className: "text-foreground" }}
+            >
+              Doctor Dashboard
+            </Link>
           )}
           {session?.role === "patient" && (
-            <Link to="/patient" className="text-muted-foreground transition hover:text-foreground" activeProps={{ className: "text-foreground" }}>My Journey</Link>
+            <Link
+              to="/patient"
+              className="text-muted-foreground transition hover:text-foreground"
+              activeProps={{ className: "text-foreground" }}
+            >
+              My Journey
+            </Link>
           )}
         </nav>
 

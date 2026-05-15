@@ -1,5 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowRight, Calendar, HeartPulse, Leaf, ShieldCheck, Stethoscope, Sparkles, User } from "lucide-react";
+import {
+  ArrowRight,
+  Calendar,
+  HeartPulse,
+  Leaf,
+  ShieldCheck,
+  Stethoscope,
+  Sparkles,
+  User,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { SiteHeader } from "@/components/site-header";
@@ -8,7 +17,11 @@ export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "AyurSutra — Panchakarma Management for Modern Ayurvedic Clinics" },
-      { name: "description", content: "Schedule therapies, track patient detox cycles, deliver pre and post procedure care, and monitor recovery — all in one Ayurvedic clinic OS." },
+      {
+        name: "description",
+        content:
+          "Schedule therapies, track patient detox cycles, deliver pre and post procedure care, and monitor recovery — all in one Ayurvedic clinic OS.",
+      },
     ],
   }),
   component: Landing,
@@ -32,9 +45,9 @@ function Landing() {
               Panchakarma, orchestrated with the precision of modern medicine.
             </h1>
             <p className="mt-6 max-w-xl text-lg text-white/85">
-              AyurSutra brings together scheduling, treatment timelines, dosha-aware
-              precautions and recovery telemetry — so practitioners heal more, and
-              patients always know what comes next.
+              AyurSutra brings together scheduling, treatment timelines, dosha-aware precautions and
+              recovery telemetry — so practitioners heal more, and patients always know what comes
+              next.
             </p>
 
             <div className="mt-10 grid gap-4 sm:grid-cols-2">
@@ -59,7 +72,9 @@ function Landing() {
             <div className="absolute -left-6 top-10 h-72 w-72 rounded-full bg-[oklch(0.72_0.16_60)] opacity-30 blur-3xl" />
             <Card className="relative ml-auto w-full max-w-md rotate-1 border-white/20 bg-white/95 p-6 shadow-soft">
               <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold uppercase tracking-widest text-primary">Today's Snapshot</p>
+                <p className="text-xs font-semibold uppercase tracking-widest text-primary">
+                  Today's Snapshot
+                </p>
                 <Leaf className="h-4 w-4 text-primary" />
               </div>
               <div className="mt-4 space-y-3">
@@ -82,19 +97,37 @@ function Landing() {
       {/* Features */}
       <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6">
         <div className="mb-12 max-w-2xl">
-          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-primary">Built for both sides of the table</p>
-          <h2 className="mt-3 font-display text-4xl font-semibold text-foreground">Two dashboards. One healing journey.</h2>
+          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-primary">
+            Built for both sides of the table
+          </p>
+          <h2 className="mt-3 font-display text-4xl font-semibold text-foreground">
+            Two dashboards. One healing journey.
+          </h2>
         </div>
         <div className="grid gap-6 md:grid-cols-3">
-          <Feature icon={<Calendar />} title="Smart Scheduling" desc="Calendar-driven therapy bookings with automatic conflict and room detection." />
-          <Feature icon={<HeartPulse />} title="Recovery Telemetry" desc="Patients log daily symptoms; practitioners see trendlines in real time." />
-          <Feature icon={<ShieldCheck />} title="Dosha-aware Care" desc="Pre & post-procedure precautions surface automatically based on the active therapy." />
+          <Feature
+            icon={<Calendar />}
+            title="Smart Scheduling"
+            desc="Calendar-driven therapy bookings with automatic conflict and room detection."
+          />
+          <Feature
+            icon={<HeartPulse />}
+            title="Recovery Telemetry"
+            desc="Patients log daily symptoms; practitioners see trendlines in real time."
+          />
+          <Feature
+            icon={<ShieldCheck />}
+            title="Dosha-aware Care"
+            desc="Pre & post-procedure precautions surface automatically based on the active therapy."
+          />
         </div>
       </section>
 
       <footer className="border-t border-border/60 bg-background/60">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 px-4 py-8 text-sm text-muted-foreground sm:flex-row sm:px-6">
-          <p>© {new Date().getFullYear()} AyurSutra · Crafted for classical Panchakarma practice.</p>
+          <p>
+            © {new Date().getFullYear()} AyurSutra · Crafted for classical Panchakarma practice.
+          </p>
           <p className="text-xs uppercase tracking-[0.2em]">सर्वे भवन्तु सुखिनः</p>
         </div>
       </footer>
@@ -102,13 +135,27 @@ function Landing() {
   );
 }
 
-function RoleCard({ href, icon, title, desc, tone }: { href: string; icon: React.ReactNode; title: string; desc: string; tone: "leaf" | "saffron" }) {
+function RoleCard({
+  href,
+  icon,
+  title,
+  desc,
+  tone,
+}: {
+  href: string;
+  icon: React.ReactNode;
+  title: string;
+  desc: string;
+  tone: "leaf" | "saffron";
+}) {
   return (
     <Link
       to={href}
       className="group relative overflow-hidden rounded-2xl border border-white/20 bg-white/10 p-5 backdrop-blur transition hover:bg-white/15"
     >
-      <div className={`mb-3 inline-flex h-10 w-10 items-center justify-center rounded-xl ${tone === "leaf" ? "bg-leaf text-leaf-foreground" : "bg-saffron text-saffron-foreground"}`}>
+      <div
+        className={`mb-3 inline-flex h-10 w-10 items-center justify-center rounded-xl ${tone === "leaf" ? "bg-leaf text-leaf-foreground" : "bg-saffron text-saffron-foreground"}`}
+      >
         {icon}
       </div>
       <p className="font-display text-xl font-semibold text-white">{title}</p>
@@ -118,8 +165,21 @@ function RoleCard({ href, icon, title, desc, tone }: { href: string; icon: React
   );
 }
 
-function Stat({ label, value, tone }: { label: string; value: string; tone: "primary" | "leaf" | "saffron" }) {
-  const toneClass = tone === "primary" ? "bg-primary/10 text-primary" : tone === "leaf" ? "bg-leaf/15 text-leaf-foreground" : "bg-saffron/20 text-earth";
+function Stat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone: "primary" | "leaf" | "saffron";
+}) {
+  const toneClass =
+    tone === "primary"
+      ? "bg-primary/10 text-primary"
+      : tone === "leaf"
+        ? "bg-leaf/15 text-leaf-foreground"
+        : "bg-saffron/20 text-earth";
   return (
     <div className="flex items-center justify-between rounded-xl border border-border bg-card px-3 py-2.5">
       <span className="text-sm text-muted-foreground">{label}</span>

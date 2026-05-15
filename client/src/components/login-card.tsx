@@ -12,20 +12,46 @@ export function LoginCard({ role }: { role: Role }) {
   const navigate = useNavigate();
   const isDoctor = role === "doctor";
 
-  const [email, setEmail] = useState(isDoctor ? "dr.kashyap@ayursutra.in" : "aarav@ayursutra.in");
-  const [password, setPassword] = useState("panchakarma");
-  const [name, setName] = useState(isDoctor ? "Anjali Kashyap" : "Aarav Sharma");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
   const [mode, setMode] = useState<"signin" | "signup">("signin");
 
-  const onSubmit = (e: React.FormEvent) => {
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password || (mode === "signup" && !name)) {
       toast.error("Please fill in all fields");
       return;
     }
-    setSession({ role, name, email });
-    toast.success(`Welcome${isDoctor ? ", Dr." : ","} ${name.split(" ")[0]}`);
-    navigate({ to: isDoctor ? "/doctor" : "/patient" });
+    try {
+      let response;
+      if (mode === "signup") {
+        response = await fetch("/api/auth/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, email, password, role }),
+        });
+        if (!response.ok) throw new Error("Registration failed");
+        toast.success("Registration successful! Please sign in.");
+        setMode("signin");
+        return;
+      } else {
+        response = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
+        });
+        if (!response.ok) throw new Error("Login failed");
+        const data = await response.json();
+        setSession({ role, name: data.name || name, email });
+        toast.success(
+          `Welcome${isDoctor ? ", Dr." : ","} ${data.name ? data.name.split(" ")[0] : email}`,
+        );
+        navigate({ to: isDoctor ? "/doctor" : "/patient" });
+      }
+    } catch (err) {
+      toast.error((err as Error).message);
+    }
   };
 
   return (
@@ -47,7 +73,9 @@ export function LoginCard({ role }: { role: Role }) {
                 {isDoctor ? "Practitioner Portal" : "Patient Portal"}
               </p>
               <h1 className="mt-3 font-display text-5xl font-semibold leading-[1.05]">
-                {isDoctor ? "Run your clinic with classical clarity." : "Walk your healing path with daily guidance."}
+                {isDoctor
+                  ? "Run your clinic with classical clarity."
+                  : "Walk your healing path with daily guidance."}
               </h1>
               <p className="mt-4 max-w-md text-white/80">
                 {isDoctor
@@ -59,18 +87,22 @@ export function LoginCard({ role }: { role: Role }) {
               to={isDoctor ? "/login/patient" : "/login/doctor"}
               className="inline-flex items-center gap-2 text-sm text-white/80 hover:text-white"
             >
-              I'm actually a {isDoctor ? "patient" : "practitioner"} <ArrowRight className="h-4 w-4" />
+              I'm actually a {isDoctor ? "patient" : "practitioner"}{" "}
+              <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
 
           <Card className="p-7 shadow-soft sm:p-9">
             <div className="mb-6 flex items-center gap-3">
-              <div className={`grid h-11 w-11 place-items-center rounded-xl ${isDoctor ? "bg-leaf text-leaf-foreground" : "bg-saffron text-saffron-foreground"}`}>
+              <div
+                className={`grid h-11 w-11 place-items-center rounded-xl ${isDoctor ? "bg-leaf text-leaf-foreground" : "bg-saffron text-saffron-foreground"}`}
+              >
                 {isDoctor ? <Stethoscope className="h-5 w-5" /> : <User className="h-5 w-5" />}
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                  {isDoctor ? "Practitioner" : "Patient"} {mode === "signin" ? "Sign in" : "Sign up"}
+                  {isDoctor ? "Practitioner" : "Patient"}{" "}
+                  {mode === "signin" ? "Sign in" : "Sign up"}
                 </p>
                 <h2 className="font-display text-2xl font-semibold">
                   {mode === "signin" ? "Welcome back" : "Create your account"}
@@ -82,30 +114,48 @@ export function LoginCard({ role }: { role: Role }) {
               {mode === "signup" && (
                 <div className="space-y-1.5">
                   <Label htmlFor="name">Full name</Label>
-                  <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" />
+                  <Input
+                    id="name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Your name"
+                  />
                 </div>
               )}
               <div className="space-y-1.5">
                 <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
+                <Input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="password">Password</Label>
-                <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+                <Input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
               </div>
 
               <Button type="submit" className="w-full" size="lg">
-                {mode === "signin" ? "Sign in" : "Create account"} <ArrowRight className="ml-1 h-4 w-4" />
+                {mode === "signin" ? "Sign in" : "Create account"}{" "}
+                <ArrowRight className="ml-1 h-4 w-4" />
               </Button>
 
               <p className="text-center text-sm text-muted-foreground">
                 {mode === "signin" ? "New to AyurSutra?" : "Already have an account?"}{" "}
-                <button type="button" onClick={() => setMode(mode === "signin" ? "signup" : "signin")} className="font-medium text-primary hover:underline">
+                <button
+                  type="button"
+                  onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
+                  className="font-medium text-primary hover:underline"
+                >
                   {mode === "signin" ? "Create one" : "Sign in"}
                 </button>
-              </p>
-              <p className="rounded-lg border border-dashed border-border bg-muted/40 px-3 py-2 text-center text-xs text-muted-foreground">
-                Demo mode — credentials are pre-filled. Just press Sign in.
               </p>
             </form>
           </Card>

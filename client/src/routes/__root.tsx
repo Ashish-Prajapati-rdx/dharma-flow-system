@@ -74,10 +74,18 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "AyurSutra — Panchakarma Management System" },
-      { name: "description", content: "AyurSutra is an end-to-end Panchakarma management platform for Ayurvedic practitioners and patients — scheduling, treatment timelines, precautions and recovery tracking." },
+      {
+        name: "description",
+        content:
+          "AyurSutra is an end-to-end Panchakarma management platform for Ayurvedic practitioners and patients — scheduling, treatment timelines, precautions and recovery tracking.",
+      },
       { name: "author", content: "AyurSutra" },
       { property: "og:title", content: "AyurSutra — Panchakarma Management System" },
-      { property: "og:description", content: "Ayurvedic clinic operating system: scheduling, patient timelines, precautions and recovery insights." },
+      {
+        property: "og:description",
+        content:
+          "Ayurvedic clinic operating system: scheduling, patient timelines, precautions and recovery insights.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
@@ -85,7 +93,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     links: [
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
-      { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" },
+      {
+        rel: "stylesheet",
+        href: "https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap",
+      },
       { rel: "stylesheet", href: appCss },
     ],
   }),

@@ -1,7 +1,27 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Activity, AlertTriangle, Bell, CalendarHeart, CheckCircle2, ClipboardList, Leaf, ShieldAlert, ShieldCheck, Sparkles, Sun } from "lucide-react";
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import {
+  Activity,
+  AlertTriangle,
+  Bell,
+  CalendarHeart,
+  CheckCircle2,
+  ClipboardList,
+  Leaf,
+  ShieldAlert,
+  ShieldCheck,
+  Sparkles,
+  Sun,
+} from "lucide-react";
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { SiteHeader } from "@/components/site-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,7 +41,11 @@ export const Route = createFileRoute("/patient")({
   head: () => ({
     meta: [
       { title: "My Healing Journey — AyurSutra" },
-      { name: "description", content: "Track your Panchakarma timeline, follow procedure precautions, and report symptoms daily." },
+      {
+        name: "description",
+        content:
+          "Track your Panchakarma timeline, follow procedure precautions, and report symptoms daily.",
+      },
     ],
   }),
   component: PatientDashboard,
@@ -48,9 +72,17 @@ function PatientDashboard() {
           <div className="absolute -right-10 -top-10 h-56 w-56 rounded-full bg-saffron/30 blur-3xl" />
           <div className="relative grid gap-6 md:grid-cols-[1.4fr_1fr]">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-white/70">Day {me.dayCurrent} of {me.programDays}</p>
-              <h1 className="mt-2 font-display text-4xl font-semibold sm:text-5xl">Your {me.programDays}-day {me.programDays === 7 ? "purification" : "deep detox"} cycle</h1>
-              <p className="mt-3 max-w-xl text-white/85">Currently undergoing <strong>{therapy.name}</strong> ({therapy.sanskrit}). {therapy.description}</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-white/70">
+                Day {me.dayCurrent} of {me.programDays}
+              </p>
+              <h1 className="mt-2 font-display text-4xl font-semibold sm:text-5xl">
+                Your {me.programDays}-day {me.programDays === 7 ? "purification" : "deep detox"}{" "}
+                cycle
+              </h1>
+              <p className="mt-3 max-w-xl text-white/85">
+                Currently undergoing <strong>{therapy.name}</strong> ({therapy.sanskrit}).{" "}
+                {therapy.description}
+              </p>
               <div className="mt-6 max-w-md">
                 <div className="mb-1.5 flex justify-between text-xs text-white/80">
                   <span>Progress</span>
@@ -61,8 +93,12 @@ function PatientDashboard() {
                 </div>
               </div>
               <div className="mt-6 flex flex-wrap gap-2">
-                <Badge variant="secondary" className="bg-white/15 text-white"><Leaf className="mr-1 h-3 w-3" /> Prakriti: {me.prakriti}</Badge>
-                <Badge variant="secondary" className="bg-white/15 text-white"><CalendarHeart className="mr-1 h-3 w-3" /> Next session: 08:00 tomorrow</Badge>
+                <Badge variant="secondary" className="bg-white/15 text-white">
+                  <Leaf className="mr-1 h-3 w-3" /> Prakriti: {me.prakriti}
+                </Badge>
+                <Badge variant="secondary" className="bg-white/15 text-white">
+                  <CalendarHeart className="mr-1 h-3 w-3" /> Next session: 08:00 tomorrow
+                </Badge>
               </div>
             </div>
             <div className="rounded-2xl border border-white/20 bg-white/10 p-5 backdrop-blur">
@@ -84,10 +120,18 @@ function PatientDashboard() {
 
         <Tabs defaultValue="timeline" className="space-y-6">
           <TabsList className="bg-muted/60">
-            <TabsTrigger value="timeline"><CalendarHeart className="mr-2 h-4 w-4" /> Timeline</TabsTrigger>
-            <TabsTrigger value="precautions"><ShieldCheck className="mr-2 h-4 w-4" /> Precautions</TabsTrigger>
-            <TabsTrigger value="report"><ClipboardList className="mr-2 h-4 w-4" /> Report symptoms</TabsTrigger>
-            <TabsTrigger value="recovery"><Activity className="mr-2 h-4 w-4" /> Recovery</TabsTrigger>
+            <TabsTrigger value="timeline">
+              <CalendarHeart className="mr-2 h-4 w-4" /> Timeline
+            </TabsTrigger>
+            <TabsTrigger value="precautions">
+              <ShieldCheck className="mr-2 h-4 w-4" /> Precautions
+            </TabsTrigger>
+            <TabsTrigger value="report">
+              <ClipboardList className="mr-2 h-4 w-4" /> Report symptoms
+            </TabsTrigger>
+            <TabsTrigger value="recovery">
+              <Activity className="mr-2 h-4 w-4" /> Recovery
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="timeline">
@@ -124,39 +168,56 @@ function Mini({ label, value, icon }: { label: string; value: string; icon: Reac
 /* ---------- Timeline ---------- */
 
 function TimelineView({ totalDays, currentDay }: { totalDays: number; currentDay: number }) {
-  const phases = totalDays === 7
-    ? [
-        { range: [1, 2], name: "Purvakarma", desc: "Preparation — Snehana & Swedana" },
-        { range: [3, 5], name: "Pradhanakarma", desc: "Main therapy — Virechana / Basti" },
-        { range: [6, 7], name: "Paschatkarma", desc: "Restoration — diet & rest" },
-      ]
-    : [
-        { range: [1, 5], name: "Purvakarma", desc: "Oleation & sudation prep" },
-        { range: [6, 14], name: "Pradhanakarma", desc: "Core Panchakarma procedures" },
-        { range: [15, 21], name: "Paschatkarma", desc: "Samsarjana Krama & rejuvenation" },
-      ];
+  const phases =
+    totalDays === 7
+      ? [
+          { range: [1, 2], name: "Purvakarma", desc: "Preparation — Snehana & Swedana" },
+          { range: [3, 5], name: "Pradhanakarma", desc: "Main therapy — Virechana / Basti" },
+          { range: [6, 7], name: "Paschatkarma", desc: "Restoration — diet & rest" },
+        ]
+      : [
+          { range: [1, 5], name: "Purvakarma", desc: "Oleation & sudation prep" },
+          { range: [6, 14], name: "Pradhanakarma", desc: "Core Panchakarma procedures" },
+          { range: [15, 21], name: "Paschatkarma", desc: "Samsarjana Krama & rejuvenation" },
+        ];
   return (
     <Card className="p-6">
       <h2 className="font-display text-xl font-semibold">Your detox cycle</h2>
-      <p className="text-sm text-muted-foreground">Visual progress across the three classical phases</p>
+      <p className="text-sm text-muted-foreground">
+        Visual progress across the three classical phases
+      </p>
 
       <div className="relative mt-8">
         <div className="absolute inset-x-0 top-5 h-1.5 rounded-full bg-muted" />
-        <div className="absolute left-0 top-5 h-1.5 rounded-full bg-leaf-grad" style={{ width: `${(currentDay / totalDays) * 100}%` }} />
-        <div className="relative grid gap-4" style={{ gridTemplateColumns: `repeat(${totalDays}, minmax(0, 1fr))` }}>
+        <div
+          className="absolute left-0 top-5 h-1.5 rounded-full bg-leaf-grad"
+          style={{ width: `${(currentDay / totalDays) * 100}%` }}
+        />
+        <div
+          className="relative grid gap-4"
+          style={{ gridTemplateColumns: `repeat(${totalDays}, minmax(0, 1fr))` }}
+        >
           {Array.from({ length: totalDays }, (_, i) => i + 1).map((d) => {
             const done = d < currentDay;
             const today = d === currentDay;
             return (
               <div key={d} className="flex flex-col items-center">
-                <div className={`grid h-10 w-10 place-items-center rounded-full border-2 text-xs font-semibold transition ${
-                  today ? "border-saffron bg-saffron text-saffron-foreground shadow-soft scale-110"
-                  : done ? "border-primary bg-primary text-primary-foreground"
-                  : "border-border bg-card text-muted-foreground"
-                }`}>
+                <div
+                  className={`grid h-10 w-10 place-items-center rounded-full border-2 text-xs font-semibold transition ${
+                    today
+                      ? "border-saffron bg-saffron text-saffron-foreground shadow-soft scale-110"
+                      : done
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border bg-card text-muted-foreground"
+                  }`}
+                >
                   {done ? <CheckCircle2 className="h-4 w-4" /> : d}
                 </div>
-                <p className={`mt-1.5 text-[10px] ${today ? "font-semibold text-foreground" : "text-muted-foreground"}`}>D{d}</p>
+                <p
+                  className={`mt-1.5 text-[10px] ${today ? "font-semibold text-foreground" : "text-muted-foreground"}`}
+                >
+                  D{d}
+                </p>
               </div>
             );
           })}
@@ -167,11 +228,20 @@ function TimelineView({ totalDays, currentDay }: { totalDays: number; currentDay
         {phases.map((p) => {
           const active = currentDay >= p.range[0] && currentDay <= p.range[1];
           return (
-            <div key={p.name} className={`rounded-2xl border p-5 transition ${active ? "border-primary bg-primary/5 shadow-soft" : "border-border bg-card"}`}>
-              <p className="text-xs uppercase tracking-widest text-muted-foreground">Day {p.range[0]}–{p.range[1]}</p>
+            <div
+              key={p.name}
+              className={`rounded-2xl border p-5 transition ${active ? "border-primary bg-primary/5 shadow-soft" : "border-border bg-card"}`}
+            >
+              <p className="text-xs uppercase tracking-widest text-muted-foreground">
+                Day {p.range[0]}–{p.range[1]}
+              </p>
               <p className="mt-1 font-display text-xl font-semibold">{p.name}</p>
               <p className="mt-1 text-sm text-muted-foreground">{p.desc}</p>
-              {active && <Badge className="mt-3 bg-saffron text-saffron-foreground hover:bg-saffron">Current phase</Badge>}
+              {active && (
+                <Badge className="mt-3 bg-saffron text-saffron-foreground hover:bg-saffron">
+                  Current phase
+                </Badge>
+              )}
             </div>
           );
         })}
@@ -198,7 +268,10 @@ function PrecautionsView({ therapyId }: { therapyId: string }) {
         </div>
         <ul className="space-y-3">
           {t.pre.map((p) => (
-            <li key={p} className="flex items-start gap-3 rounded-xl border border-border bg-card px-4 py-3">
+            <li
+              key={p}
+              className="flex items-start gap-3 rounded-xl border border-border bg-card px-4 py-3"
+            >
               <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-saffron" />
               <span className="text-sm">{p}</span>
             </li>
@@ -212,13 +285,18 @@ function PrecautionsView({ therapyId }: { therapyId: string }) {
             <ShieldCheck className="h-5 w-5" />
           </div>
           <div>
-            <p className="text-xs uppercase tracking-widest text-muted-foreground">Post-procedure</p>
+            <p className="text-xs uppercase tracking-widest text-muted-foreground">
+              Post-procedure
+            </p>
             <h3 className="font-display text-xl font-semibold">After {t.name}</h3>
           </div>
         </div>
         <ul className="space-y-3">
           {t.post.map((p) => (
-            <li key={p} className="flex items-start gap-3 rounded-xl border border-border bg-card px-4 py-3">
+            <li
+              key={p}
+              className="flex items-start gap-3 rounded-xl border border-border bg-card px-4 py-3"
+            >
               <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" />
               <span className="text-sm">{p}</span>
             </li>
@@ -238,7 +316,16 @@ function SymptomForm({ patientName }: { patientName: string }) {
   const [note, setNote] = useState("");
   const [tags, setTags] = useState<string[]>([]);
 
-  const allTags = ["Headache", "Nausea", "Fatigue", "Better sleep", "Calm mind", "Light body", "Dizziness", "Improved digestion"];
+  const allTags = [
+    "Headache",
+    "Nausea",
+    "Fatigue",
+    "Better sleep",
+    "Calm mind",
+    "Light body",
+    "Dizziness",
+    "Improved digestion",
+  ];
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -250,7 +337,9 @@ function SymptomForm({ patientName }: { patientName: string }) {
   return (
     <Card className="p-6">
       <div className="mb-5">
-        <h2 className="font-display text-xl font-semibold">How are you feeling today, {patientName.split(" ")[0]}?</h2>
+        <h2 className="font-display text-xl font-semibold">
+          How are you feeling today, {patientName.split(" ")[0]}?
+        </h2>
         <p className="text-sm text-muted-foreground">Your honest report shapes tomorrow's care.</p>
       </div>
       <form onSubmit={submit} className="grid gap-6 md:grid-cols-2">
@@ -266,7 +355,9 @@ function SymptomForm({ patientName }: { patientName: string }) {
                 <button
                   type="button"
                   key={t}
-                  onClick={() => setTags((prev) => active ? prev.filter((x) => x !== t) : [...prev, t])}
+                  onClick={() =>
+                    setTags((prev) => (active ? prev.filter((x) => x !== t) : [...prev, t]))
+                  }
                   className={`rounded-full border px-3 py-1 text-xs transition ${active ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card hover:border-primary/40"}`}
                 >
                   {t}
@@ -277,22 +368,41 @@ function SymptomForm({ patientName }: { patientName: string }) {
         </div>
         <div className="space-y-2 md:col-span-2">
           <Label htmlFor="note">Note for your practitioner</Label>
-          <Textarea id="note" rows={4} placeholder="Anything else to share — dreams, cravings, mood..." value={note} onChange={(e) => setNote(e.target.value)} />
+          <Textarea
+            id="note"
+            rows={4}
+            placeholder="Anything else to share — dreams, cravings, mood..."
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
         </div>
         <div className="md:col-span-2">
-          <Button type="submit" size="lg">Submit today's report</Button>
+          <Button type="submit" size="lg">
+            Submit today's report
+          </Button>
         </div>
       </form>
     </Card>
   );
 }
 
-function SliderField({ label, value, setValue }: { label: string; value: number[]; setValue: (v: number[]) => void }) {
+function SliderField({
+  label,
+  value,
+  setValue,
+}: {
+  label: string;
+  value: number[];
+  setValue: (v: number[]) => void;
+}) {
   return (
     <div className="space-y-2 rounded-xl border border-border bg-card p-4">
       <div className="flex items-center justify-between">
         <Label>{label}</Label>
-        <span className="font-display text-2xl font-semibold text-primary">{value[0]}<span className="text-sm text-muted-foreground">/10</span></span>
+        <span className="font-display text-2xl font-semibold text-primary">
+          {value[0]}
+          <span className="text-sm text-muted-foreground">/10</span>
+        </span>
       </div>
       <Slider min={0} max={10} step={1} value={value} onValueChange={setValue} />
     </div>
@@ -305,7 +415,9 @@ function RecoveryView() {
   return (
     <Card className="p-6">
       <h2 className="font-display text-xl font-semibold">Recovery milestones</h2>
-      <p className="text-sm text-muted-foreground">Your self-reported scores trending across the program</p>
+      <p className="text-sm text-muted-foreground">
+        Your self-reported scores trending across the program
+      </p>
       <div className="mt-6 h-80">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={RECOVERY_TIMELINE}>
@@ -325,11 +437,38 @@ function RecoveryView() {
             </defs>
             <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" vertical={false} />
             <XAxis dataKey="day" tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} />
-            <YAxis domain={[0, 10]} tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} />
-            <Tooltip contentStyle={{ background: "var(--color-card)", border: "1px solid var(--color-border)", borderRadius: 12 }} />
-            <Area type="monotone" dataKey="energy" stroke="var(--color-primary)" strokeWidth={2} fill="url(#g1)" />
-            <Area type="monotone" dataKey="sleep" stroke="var(--color-saffron)" strokeWidth={2} fill="url(#g2)" />
-            <Area type="monotone" dataKey="digestion" stroke="var(--color-leaf)" strokeWidth={2} fill="url(#g3)" />
+            <YAxis
+              domain={[0, 10]}
+              tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }}
+            />
+            <Tooltip
+              contentStyle={{
+                background: "var(--color-card)",
+                border: "1px solid var(--color-border)",
+                borderRadius: 12,
+              }}
+            />
+            <Area
+              type="monotone"
+              dataKey="energy"
+              stroke="var(--color-primary)"
+              strokeWidth={2}
+              fill="url(#g1)"
+            />
+            <Area
+              type="monotone"
+              dataKey="sleep"
+              stroke="var(--color-saffron)"
+              strokeWidth={2}
+              fill="url(#g2)"
+            />
+            <Area
+              type="monotone"
+              dataKey="digestion"
+              stroke="var(--color-leaf)"
+              strokeWidth={2}
+              fill="url(#g3)"
+            />
           </AreaChart>
         </ResponsiveContainer>
       </div>
@@ -372,17 +511,29 @@ function PatientNotifications() {
             {PATIENT_NOTIFICATIONS.map((n) => (
               <li key={n.id} className="px-4 py-3">
                 <div className="flex items-start gap-3">
-                  <div className={`grid h-7 w-7 flex-shrink-0 place-items-center rounded-lg ${
-                    n.type === "session" ? "bg-primary/10 text-primary" :
-                    n.type === "diet" ? "bg-leaf/15 text-leaf-foreground" :
-                    "bg-saffron/25 text-earth"
-                  }`}>
-                    {n.type === "session" ? <CalendarHeart className="h-3.5 w-3.5" /> : n.type === "diet" ? <Leaf className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
+                  <div
+                    className={`grid h-7 w-7 flex-shrink-0 place-items-center rounded-lg ${
+                      n.type === "session"
+                        ? "bg-primary/10 text-primary"
+                        : n.type === "diet"
+                          ? "bg-leaf/15 text-leaf-foreground"
+                          : "bg-saffron/25 text-earth"
+                    }`}
+                  >
+                    {n.type === "session" ? (
+                      <CalendarHeart className="h-3.5 w-3.5" />
+                    ) : n.type === "diet" ? (
+                      <Leaf className="h-3.5 w-3.5" />
+                    ) : (
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                    )}
                   </div>
                   <div>
                     <p className="text-sm font-medium">{n.title}</p>
                     <p className="mt-0.5 text-xs text-muted-foreground">{n.body}</p>
-                    <p className="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">{n.time}</p>
+                    <p className="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                      {n.time}
+                    </p>
                   </div>
                 </div>
               </li>
