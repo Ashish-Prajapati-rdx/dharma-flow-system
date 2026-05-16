@@ -1,12 +1,29 @@
 import { useState } from "react";
 import { useNavigate, Link } from "@tanstack/react-router";
+import axios from "axios";
 import { Stethoscope, User, ArrowRight, Leaf } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { setSession, type Role } from "@/lib/auth";
-import { toast } from "sonner";
+import toast from "react-hot-toast";
+
+interface AuthUserResponse {
+  _id: string;
+  name: string;
+  email: string;
+  role: Role;
+}
+
+interface LoginResponse {
+  token: string;
+  user?: AuthUserResponse;
+  userId?: string;
+  role: Role;
+  name: string;
+  email: string;
+}
 
 export function LoginCard({ role }: { role: Role }) {
   const navigate = useNavigate();
@@ -24,26 +41,24 @@ export function LoginCard({ role }: { role: Role }) {
       return;
     }
     try {
-      let response;
       if (mode === "signup") {
-        response = await fetch("/api/auth/register", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, email, password, role }),
-        });
-        if (!response.ok) throw new Error("Registration failed");
+        await axios.post("/api/auth/register", { name, email, password, role });
         toast.success("Registration successful! Please sign in.");
         setMode("signin");
         return;
       } else {
-        response = await fetch("/api/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password }),
+        const { data } = await axios.post<LoginResponse>("/api/auth/login", { email, password });
+        if (data.role !== role) {
+          throw new Error(`Please use the ${data.role} portal for this account.`);
+        }
+
+        setSession({
+          id: data.user?._id ?? data.userId,
+          role: data.role,
+          name: data.user?.name ?? data.name ?? name,
+          email: data.user?.email ?? data.email ?? email,
+          token: data.token,
         });
-        if (!response.ok) throw new Error("Login failed");
-        const data = await response.json();
-        setSession({ role, name: data.name || name, email });
         toast.success(
           `Welcome${isDoctor ? ", Dr." : ","} ${data.name ? data.name.split(" ")[0] : email}`,
         );

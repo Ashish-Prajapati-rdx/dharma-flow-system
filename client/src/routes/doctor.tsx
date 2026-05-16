@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import axios from "axios";
 import {
   Bell,
   CalendarDays,
   Clock,
+  Loader2,
   MapPin,
   MessageSquare,
   Plus,
@@ -49,17 +51,8 @@ import {
 } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { toast } from "sonner";
-import {
-  TODAY_APPOINTMENTS,
-  PATIENTS,
-  FEEDBACK,
-  THERAPIES,
-  DOCTOR_NOTIFICATIONS,
-  getTherapy,
-  type Appointment,
-} from "@/lib/clinic-data";
-import { getSession } from "@/lib/auth";
+import toast from "react-hot-toast";
+import { getSession, type SessionUser } from "@/lib/auth";
 
 export const Route = createFileRoute("/doctor")({
   head: () => ({
@@ -75,14 +68,145 @@ export const Route = createFileRoute("/doctor")({
   component: DoctorDashboard,
 });
 
+type UserRole = "doctor" | "patient";
+type TherapyStatus = "Scheduled" | "Completed";
+
+interface MongoUser {
+  _id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  assignedDoctor?: string;
+}
+
+type UserReference = string | MongoUser;
+
+interface Appointment {
+  _id: string;
+  patientId: UserReference;
+  doctorId: UserReference;
+  therapyName: string;
+  time: string;
+  duration: number;
+  room: string;
+  status: TherapyStatus;
+}
+
+interface FeedbackEntry {
+  _id: string;
+  patientId?: UserReference;
+  patientName: string;
+  rating: number;
+  symptoms: string[];
+  note: string;
+  submittedAt: string;
+  energy: number;
+  digestion: number;
+  sleep: number;
+}
+
+interface NotificationItem {
+  _id: string;
+  title: string;
+  body: string;
+  time: string;
+  type: "session" | "diet" | "alert";
+}
+
 function DoctorDashboard() {
   const navigate = useNavigate();
-  useEffect(() => {
-    const s = getSession();
-    if (!s || s.role !== "doctor") navigate({ to: "/login/doctor" });
-  }, [navigate]);
+  const [doctorSession, setDoctorSession] = useState<SessionUser | null>(null);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [patients, setPatients] = useState<MongoUser[]>([]);
+  const [feedbackEntries] = useState<FeedbackEntry[]>([]);
+  const [notifications] = useState<NotificationItem[]>([]);
+  const [isScheduleLoading, setIsScheduleLoading] = useState(true);
+  const [isPatientsLoading, setIsPatientsLoading] = useState(true);
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
+  const [patientsError, setPatientsError] = useState<string | null>(null);
 
-  const [appointments, setAppointments] = useState<Appointment[]>(TODAY_APPOINTMENTS);
+  useEffect(() => {
+    const session = getSession();
+    if (!session || session.role !== "doctor") {
+      navigate({ to: "/login/doctor" });
+      return;
+    }
+
+    setDoctorSession(session);
+    if (!session.id) {
+      setIsScheduleLoading(false);
+      setIsPatientsLoading(false);
+      setScheduleError("Please sign in again so your doctor profile can be loaded.");
+      setPatientsError("Please sign in again so your assigned patients can be loaded.");
+      toast.error("Please sign in again to load your schedule.");
+      return;
+    }
+
+    let ignore = false;
+    const loadingToast = toast.loading("Loading today's clinic...");
+
+    setIsScheduleLoading(true);
+    setIsPatientsLoading(true);
+    setScheduleError(null);
+    setPatientsError(null);
+
+    const loadClinic = async () => {
+      const headers = authHeaders(session);
+      const [appointmentsResult, patientsResult] = await Promise.allSettled([
+        axios.get<Appointment[]>(`http://localhost:5000/api/appointments/doctor/${session.id}`, {
+          headers,
+        }),
+        axios.get<MongoUser[]>("http://localhost:5000/api/users/patients", {
+          params: { doctorId: session.id },
+          headers,
+        }),
+      ]);
+
+      if (ignore) return;
+
+      if (appointmentsResult.status === "fulfilled") {
+        setAppointments(appointmentsResult.value.data.sort((x, y) => x.time.localeCompare(y.time)));
+      } else {
+        const message = getApiErrorMessage(
+          appointmentsResult.reason,
+          "Unable to load therapy schedule.",
+        );
+        setScheduleError(message);
+        toast.error(message);
+      }
+
+      if (patientsResult.status === "fulfilled") {
+        setPatients(patientsResult.value.data);
+      } else {
+        const message = getApiErrorMessage(
+          patientsResult.reason,
+          "Unable to load active patients.",
+        );
+        setPatientsError(message);
+        toast.error(message);
+      }
+
+      setIsScheduleLoading(false);
+      setIsPatientsLoading(false);
+      toast.dismiss(loadingToast);
+    };
+
+    loadClinic().catch((error) => {
+      if (ignore) return;
+      const message = getApiErrorMessage(error, "Unable to load today's clinic.");
+      setScheduleError(message);
+      setPatientsError(message);
+      setIsScheduleLoading(false);
+      setIsPatientsLoading(false);
+      toast.dismiss(loadingToast);
+      toast.error(message);
+    });
+
+    return () => {
+      ignore = true;
+      toast.dismiss(loadingToast);
+    };
+  }, [navigate]);
 
   const stats = [
     {
@@ -93,23 +217,34 @@ function DoctorDashboard() {
     },
     {
       label: "Active patients",
-      value: PATIENTS.filter((p) => p.status !== "Completed").length.toString(),
+      value: isPatientsLoading ? "..." : patients.length.toString(),
       icon: Users,
       tone: "leaf",
     },
     {
       label: "Feedback in last 24h",
-      value: FEEDBACK.length.toString(),
+      value: feedbackEntries.length.toString(),
       icon: MessageSquare,
       tone: "saffron",
     },
     {
       label: "Needs review",
-      value: PATIENTS.filter((p) => p.status === "Needs Review").length.toString(),
+      value: "0",
       icon: TrendingUp,
       tone: "earth",
     },
   ];
+
+  const handleCancelAppointment = async (id: string) => {
+    try {
+      const headers = authHeaders(doctorSession);
+      await axios.delete(`http://localhost:5000/api/appointments/${id}`, { headers });
+      setAppointments((prev) => prev.filter((a) => a._id !== id));
+      toast.success("Appointment cancelled successfully.");
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Failed to cancel assignment."));
+    }
+  };
 
   return (
     <div className="min-h-screen">
@@ -132,12 +267,14 @@ function DoctorDashboard() {
             </p>
           </div>
           <div className="flex gap-2">
-            <NotificationsBell />
+            <NotificationsBell notifications={notifications} />
             <NewAppointmentDialog
+              doctor={doctorSession}
+              patients={patients}
+              isPatientsLoading={isPatientsLoading}
               onCreate={(a) =>
                 setAppointments((prev) => [...prev, a].sort((x, y) => x.time.localeCompare(y.time)))
               }
-              existing={appointments}
             />
           </div>
         </div>
@@ -189,23 +326,27 @@ function DoctorDashboard() {
           <TabsContent value="schedule">
             <ScheduleView
               appointments={appointments}
-              onCancel={(id) => {
-                setAppointments((p) => p.filter((a) => a.id !== id));
-                toast.success("Appointment cancelled");
-              }}
+              isLoading={isScheduleLoading}
+              error={scheduleError}
+              onCancel={handleCancelAppointment}
             />
           </TabsContent>
 
           <TabsContent value="patients">
-            <PatientsView />
+            <PatientsView
+              patients={patients}
+              appointments={appointments}
+              isLoading={isPatientsLoading}
+              error={patientsError}
+            />
           </TabsContent>
 
           <TabsContent value="feedback">
-            <FeedbackView />
+            <FeedbackView feedbackEntries={feedbackEntries} />
           </TabsContent>
 
           <TabsContent value="insights">
-            <InsightsView />
+            <InsightsView appointments={appointments} />
           </TabsContent>
         </Tabs>
       </main>
@@ -217,9 +358,13 @@ function DoctorDashboard() {
 
 function ScheduleView({
   appointments,
+  isLoading,
+  error,
   onCancel,
 }: {
   appointments: Appointment[];
+  isLoading: boolean;
+  error: string | null;
   onCancel: (id: string) => void;
 }) {
   const hours = Array.from({ length: 11 }, (_, i) => 8 + i); // 8–18
@@ -233,25 +378,41 @@ function ScheduleView({
             Auto-conflict guard ON
           </Badge>
         </div>
-        <div className="relative grid grid-cols-[60px_1fr] gap-2">
-          {hours.map((h) => {
-            const slotApps = appointments.filter((a) => parseInt(a.time.split(":")[0], 10) === h);
-            return (
-              <div key={h} className="contents">
-                <div className="border-t border-border pt-1.5 text-xs text-muted-foreground">
-                  {String(h).padStart(2, "0")}:00
-                </div>
-                <div className="min-h-14 border-t border-border pt-1.5">
-                  <div className="space-y-1.5">
-                    {slotApps.map((a) => (
-                      <AppointmentRow key={a.id} app={a} onCancel={onCancel} />
-                    ))}
+        {isLoading ? (
+          <div className="grid min-h-72 place-items-center rounded-xl border border-dashed border-border bg-muted/30 text-sm text-muted-foreground">
+            <span className="inline-flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading schedule...
+            </span>
+          </div>
+        ) : error ? (
+          <div className="grid min-h-72 place-items-center rounded-xl border border-dashed border-border bg-muted/30 px-4 text-center text-sm text-muted-foreground">
+            {error}
+          </div>
+        ) : appointments.length === 0 ? (
+          <div className="grid min-h-72 place-items-center rounded-xl border border-dashed border-border bg-muted/30 px-4 text-center text-sm text-muted-foreground">
+            No active sessions today.
+          </div>
+        ) : (
+          <div className="relative grid grid-cols-[60px_1fr] gap-2">
+            {hours.map((h) => {
+              const slotApps = appointments.filter((a) => parseInt(a.time.split(":")[0], 10) === h);
+              return (
+                <div key={h} className="contents">
+                  <div className="border-t border-border pt-1.5 text-xs text-muted-foreground">
+                    {String(h).padStart(2, "0")}:00
+                  </div>
+                  <div className="min-h-14 border-t border-border pt-1.5">
+                    <div className="space-y-1.5">
+                      {slotApps.map((a) => (
+                        <AppointmentRow key={a._id} app={a} onCancel={onCancel} />
+                      ))}
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </Card>
 
       <Card className="p-5">
@@ -284,7 +445,9 @@ function ScheduleView({
 }
 
 function AppointmentRow({ app, onCancel }: { app: Appointment; onCancel: (id: string) => void }) {
-  const therapy = getTherapy(app.therapyId);
+  const therapy = getTherapyDisplay(app.therapyName);
+  const patientName = getUserName(app.patientId, "Patient");
+
   return (
     <div className="group flex items-center justify-between rounded-xl border border-border bg-card px-3 py-2 shadow-sm transition hover:border-primary/40">
       <div className="flex items-center gap-3">
@@ -299,7 +462,7 @@ function AppointmentRow({ app, onCancel }: { app: Appointment; onCancel: (id: st
             </span>
           </p>
           <p className="text-xs text-muted-foreground">
-            {app.patientName} · <Clock className="mr-0.5 inline h-3 w-3" />
+            {patientName} · <Clock className="mr-0.5 inline h-3 w-3" />
             {app.time} ({app.duration}m) · <MapPin className="mr-0.5 inline h-3 w-3" />
             {app.room}
           </p>
@@ -309,7 +472,7 @@ function AppointmentRow({ app, onCancel }: { app: Appointment; onCancel: (id: st
         variant="ghost"
         size="sm"
         className="opacity-0 transition group-hover:opacity-100"
-        onClick={() => onCancel(app.id)}
+        onClick={() => onCancel(app._id)}
       >
         Cancel
       </Button>
@@ -326,42 +489,69 @@ function roomUtilisation(apps: Appointment[]) {
   }));
 }
 
+/* ---------- New Appointment Dialog ---------- */
+
 function NewAppointmentDialog({
+  doctor,
+  patients,
+  isPatientsLoading,
   onCreate,
-  existing,
 }: {
+  doctor: SessionUser | null;
+  patients: MongoUser[];
+  isPatientsLoading: boolean;
   onCreate: (a: Appointment) => void;
-  existing: Appointment[];
 }) {
   const [open, setOpen] = useState(false);
+  const [isScheduling, setIsScheduling] = useState(false);
   const [patientId, setPatientId] = useState("");
-  const [therapyId, setTherapyId] = useState("");
+  const [therapyName, setTherapyName] = useState("");
   const [time, setTime] = useState("10:00");
   const [room, setRoom] = useState("Therapy Hall A");
   const [duration, setDuration] = useState("60");
 
-  const submit = () => {
-    if (!patientId || !therapyId) return toast.error("Select patient and therapy");
+  const submit = async () => {
+    if (!doctor?.id) return toast.error("Please sign in again before scheduling.");
+    if (!patientId || !therapyName.trim() || !room.trim()) {
+      return toast.error("Select patient, therapy, and room");
+    }
+
     const dur = parseInt(duration, 10);
-    const start = toMinutes(time);
-    const conflict = existing.find(
-      (a) =>
-        a.room === room &&
-        overlap(start, start + dur, toMinutes(a.time), toMinutes(a.time) + a.duration),
-    );
-    if (conflict) return toast.error(`Conflict with ${conflict.patientName} at ${conflict.time}`);
-    const patient = PATIENTS.find((p) => p.id === patientId)!;
-    onCreate({
-      id: "a" + Math.random().toString(36).slice(2, 7),
-      patientId,
-      patientName: patient.name,
-      therapyId,
-      time,
-      duration: dur,
-      room,
-    });
-    toast.success("Session scheduled");
-    setOpen(false);
+    if (!Number.isFinite(dur) || dur <= 0) return toast.error("Enter a valid duration");
+
+    const loadingToast = toast.loading("Scheduling session...");
+    setIsScheduling(true);
+
+    try {
+      const { data } = await axios.post<Appointment>(
+        "http://localhost:5000/api/appointments/new",
+        {
+          patientId,
+          doctorId: doctor.id,
+          therapyName,
+          time,
+          duration: dur,
+          room,
+        },
+        { headers: authHeaders(doctor) },
+      );
+
+      onCreate(data);
+      toast.success("Session Saved in Atlas");
+      setOpen(false);
+      setPatientId("");
+      setTherapyName("");
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 409) {
+        toast.error("Room Conflict!");
+      } else {
+        toast.error(getApiErrorMessage(error, "Unable to schedule session."));
+      }
+    } finally {
+      // finally block hamesha chalta hai, chahe request success ho ya error aaye
+      toast.dismiss(loadingToast);
+      setIsScheduling(false);
+    }
   };
 
   return (
@@ -380,27 +570,35 @@ function NewAppointmentDialog({
             <Label>Patient</Label>
             <Select value={patientId} onValueChange={setPatientId}>
               <SelectTrigger>
-                <SelectValue placeholder="Select patient" />
+                <SelectValue
+                  placeholder={isPatientsLoading ? "Loading patients..." : "Select patient"}
+                />
               </SelectTrigger>
               <SelectContent>
-                {PATIENTS.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name}
+                {patients.length > 0 ? (
+                  patients.map((p) => (
+                    <SelectItem key={p._id} value={p._id}>
+                      {p.name}
+                    </SelectItem>
+                  ))
+                ) : (
+                  <SelectItem value="no-patients" disabled>
+                    No assigned patients
                   </SelectItem>
-                ))}
+                )}
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-1.5">
             <Label>Therapy</Label>
-            <Select value={therapyId} onValueChange={setTherapyId}>
+            <Select value={therapyName} onValueChange={setTherapyName}>
               <SelectTrigger>
                 <SelectValue placeholder="Select therapy" />
               </SelectTrigger>
               <SelectContent>
-                {THERAPIES.map((t) => (
-                  <SelectItem key={t.id} value={t.id}>
-                    {t.name} ({t.sanskrit})
+                {["Snehapana", "Nasya", "Abhyanga", "Virechana"].map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {t}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -419,7 +617,7 @@ function NewAppointmentDialog({
               <Label>Room</Label>
               <Select value={room} onValueChange={setRoom}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Select Room" />
                 </SelectTrigger>
                 <SelectContent>
                   {["Therapy Hall A", "Therapy Hall B", "Nasya Room", "Purgation Suite"].map(
@@ -438,28 +636,68 @@ function NewAppointmentDialog({
           <Button variant="ghost" onClick={() => setOpen(false)}>
             Cancel
           </Button>
-          <Button onClick={submit}>Schedule</Button>
+          <Button onClick={submit} disabled={isScheduling || isPatientsLoading}>
+            {isScheduling ? "Scheduling..." : "Schedule"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
-function toMinutes(t: string) {
-  const [h, m] = t.split(":").map(Number);
-  return h * 60 + m;
-}
-function overlap(a1: number, a2: number, b1: number, b2: number) {
-  return a1 < b2 && b1 < a2;
+function authHeaders(session: SessionUser | null): Record<string, string> | undefined {
+  return session?.token ? { Authorization: `Bearer ${session.token}` } : undefined;
 }
 
-/* ---------- Patients ---------- */
+function getApiErrorMessage(error: unknown, fallback: string) {
+  if (axios.isAxiosError<{ message?: string }>(error)) {
+    return error.response?.data?.message ?? error.message ?? fallback;
+  }
+  return error instanceof Error ? error.message : fallback;
+}
 
-function PatientsView() {
+function getUserName(ref: UserReference, fallback: string) {
+  return typeof ref === "object" && ref !== null ? ref.name : fallback;
+}
+
+function getUserId(ref: UserReference) {
+  return typeof ref === "object" && ref !== null ? ref._id : ref;
+}
+
+function shortId(id: string) {
+  return id.length > 8 ? `${id.slice(0, 8)}...` : id;
+}
+
+function getTherapyDisplay(therapyName: string) {
+  const map: Record<string, string> = {
+    Snehapana: "स्नेहपान",
+    Nasya: "नस्य",
+    Abhyanga: "अभ्यंग",
+    Virechana: "विरेचन",
+  };
+  return {
+    name: therapyName,
+    sanskrit: map[therapyName] || "",
+  };
+}
+
+/* ---------- Patients View ---------- */
+
+function PatientsView({
+  patients,
+  appointments,
+  isLoading,
+  error,
+}: {
+  patients: MongoUser[];
+  appointments: Appointment[];
+  isLoading: boolean;
+  error: string | null;
+}) {
   const [q, setQ] = useState("");
   const filtered = useMemo(
-    () => PATIENTS.filter((p) => p.name.toLowerCase().includes(q.toLowerCase())),
-    [q],
+    () => patients.filter((p) => p.name.toLowerCase().includes(q.toLowerCase())),
+    [patients, q],
   );
   return (
     <Card className="p-5">
@@ -475,59 +713,89 @@ function PatientsView() {
           />
         </div>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border text-left text-xs uppercase tracking-wider text-muted-foreground">
-              <th className="pb-3 font-medium">Patient</th>
-              <th className="pb-3 font-medium">Prakriti</th>
-              <th className="pb-3 font-medium">Current therapy</th>
-              <th className="pb-3 font-medium">Progress</th>
-              <th className="pb-3 font-medium">Status</th>
-              <th className="pb-3 font-medium">Updated</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((p) => {
-              const therapy = getTherapy(p.currentTherapy);
-              const pct = Math.round((p.dayCurrent / p.programDays) * 100);
-              return (
-                <tr key={p.id} className="border-b border-border/60 transition hover:bg-muted/40">
-                  <td className="py-3">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-9 w-9">
-                        <AvatarFallback className="bg-leaf/20 text-sm text-leaf-foreground">
-                          {initials(p.name)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="font-medium">{p.name}</p>
-                        <p className="text-xs text-muted-foreground">Age {p.age}</p>
+      {isLoading ? (
+        <div className="grid min-h-48 place-items-center rounded-xl border border-dashed border-border bg-muted/30 text-sm text-muted-foreground">
+          <span className="inline-flex items-center gap-2">
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading patients...
+          </span>
+        </div>
+      ) : error ? (
+        <div className="grid min-h-48 place-items-center rounded-xl border border-dashed border-border bg-muted/30 px-4 text-center text-sm text-muted-foreground">
+          {error}
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="grid min-h-48 place-items-center rounded-xl border border-dashed border-border bg-muted/30 px-4 text-center text-sm text-muted-foreground">
+          No active patients found.
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-xs uppercase tracking-wider text-muted-foreground">
+                <th className="pb-3 font-medium">Patient</th>
+                <th className="pb-3 font-medium">Email</th>
+                <th className="pb-3 font-medium">Current therapy</th>
+                <th className="pb-3 font-medium">Sessions today</th>
+                <th className="pb-3 font-medium">Status</th>
+                <th className="pb-3 font-medium">Assignment</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((p) => {
+                const patientAppointments = appointments.filter(
+                  (a) => getUserId(a.patientId) === p._id,
+                );
+                const nextTherapy = patientAppointments[0]?.therapyName ?? "No session today";
+                const scheduledMinutes = patientAppointments.reduce(
+                  (sum, a) => sum + a.duration,
+                  0,
+                );
+                const pct = patientAppointments.length > 0 ? 100 : 0;
+                return (
+                  <tr
+                    key={p._id}
+                    className="border-b border-border/60 transition hover:bg-muted/40"
+                  >
+                    <td className="py-3">
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-9 w-9">
+                          <AvatarFallback className="bg-leaf/20 text-sm text-leaf-foreground">
+                            {initials(p.name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <p className="font-medium">{p.name}</p>
+                          <p className="text-xs text-muted-foreground">Mongo ID {shortId(p._id)}</p>
+                        </div>
                       </div>
-                    </div>
-                  </td>
-                  <td>
-                    <Badge variant="outline">{p.prakriti}</Badge>
-                  </td>
-                  <td>{therapy.name}</td>
-                  <td className="min-w-[140px]">
-                    <div className="flex items-center gap-2">
-                      <Progress value={pct} className="h-2" />
-                      <span className="text-xs text-muted-foreground">
-                        D{p.dayCurrent}/{p.programDays}
-                      </span>
-                    </div>
-                  </td>
-                  <td>
-                    <StatusBadge status={p.status} />
-                  </td>
-                  <td className="text-xs text-muted-foreground">{p.lastUpdate}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                    </td>
+                    <td>
+                      <Badge variant="outline">{p.email}</Badge>
+                    </td>
+                    <td>{nextTherapy}</td>
+                    <td className="min-w-[140px]">
+                      <div className="flex items-center gap-2">
+                        <Progress value={pct} className="h-2" />
+                        <span className="text-xs text-muted-foreground">
+                          {patientAppointments.length} / {scheduledMinutes}m
+                        </span>
+                      </div>
+                    </td>
+                    <td>
+                      <StatusBadge
+                        status={patientAppointments.length > 0 ? "Scheduled" : "No sessions"}
+                      />
+                    </td>
+                    <td className="text-xs text-muted-foreground">
+                      {p.assignedDoctor ? "Assigned" : "Unassigned"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </Card>
   );
 }
@@ -537,6 +805,8 @@ function StatusBadge({ status }: { status: string }) {
     "On Track": "bg-leaf/20 text-leaf-foreground border-leaf/30",
     "Needs Review": "bg-saffron/25 text-earth border-saffron/40",
     Completed: "bg-muted text-muted-foreground border-border",
+    Scheduled: "bg-leaf/20 text-leaf-foreground border-leaf/30",
+    "No sessions": "bg-muted text-muted-foreground border-border",
   };
   return (
     <span
@@ -557,45 +827,51 @@ function initials(name: string) {
 
 /* ---------- Feedback ---------- */
 
-function FeedbackView() {
+function FeedbackView({ feedbackEntries }: { feedbackEntries: FeedbackEntry[] }) {
   return (
     <div className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
       <Card className="p-5">
         <h2 className="mb-4 font-display text-xl font-semibold">Live patient feedback</h2>
-        <div className="space-y-3">
-          {FEEDBACK.map((f) => (
-            <div key={f.id} className="rounded-xl border border-border bg-card p-4">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <Avatar className="h-9 w-9">
-                    <AvatarFallback className="bg-saffron/30 text-sm text-earth">
-                      {initials(f.patientName)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p className="font-medium">{f.patientName}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {f.submittedAt} · feeling {f.rating}/5
-                    </p>
+        {feedbackEntries.length === 0 ? (
+          <div className="grid min-h-48 place-items-center rounded-xl border border-dashed border-border bg-muted/30 px-4 text-center text-sm text-muted-foreground">
+            No patient feedback has been submitted yet.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {feedbackEntries.map((f) => (
+              <div key={f._id} className="rounded-xl border border-border bg-card p-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-9 w-9">
+                      <AvatarFallback className="bg-saffron/30 text-sm text-earth">
+                        {initials(f.patientName)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="font-medium">{f.patientName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {f.submittedAt} · feeling {f.rating}/5
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-1.5">
+                    {f.symptoms.map((s) => (
+                      <Badge key={s} variant="outline" className="text-xs">
+                        {s}
+                      </Badge>
+                    ))}
                   </div>
                 </div>
-                <div className="flex gap-1.5">
-                  {f.symptoms.map((s) => (
-                    <Badge key={s} variant="outline" className="text-xs">
-                      {s}
-                    </Badge>
-                  ))}
+                <p className="mt-3 text-sm text-foreground/85">"{f.note}"</p>
+                <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-muted-foreground">
+                  <Metric label="Energy" value={f.energy} />
+                  <Metric label="Digestion" value={f.digestion} />
+                  <Metric label="Sleep" value={f.sleep} />
                 </div>
               </div>
-              <p className="mt-3 text-sm text-foreground/85">"{f.note}"</p>
-              <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-muted-foreground">
-                <Metric label="Energy" value={f.energy} />
-                <Metric label="Digestion" value={f.digestion} />
-                <Metric label="Sleep" value={f.sleep} />
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </Card>
 
       <Card className="p-5">
@@ -604,36 +880,46 @@ function FeedbackView() {
           Average self-reported scores from active patients
         </p>
         <div className="mt-5 h-72">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={cohortAverages()}>
-              <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" vertical={false} />
-              <XAxis
-                dataKey="label"
-                tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }}
-              />
-              <YAxis
-                domain={[0, 10]}
-                tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }}
-              />
-              <Tooltip
-                contentStyle={{
-                  background: "var(--color-card)",
-                  border: "1px solid var(--color-border)",
-                  borderRadius: 12,
-                }}
-              />
-              <Bar dataKey="value" radius={[8, 8, 0, 0]} fill="var(--color-leaf)" />
-            </BarChart>
-          </ResponsiveContainer>
+          {feedbackEntries.length === 0 ? (
+            <div className="grid h-full place-items-center rounded-xl border border-dashed border-border bg-muted/30 px-4 text-center text-sm text-muted-foreground">
+              Feedback charts will appear after patients submit reports.
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={cohortAverages(feedbackEntries)}>
+                <CartesianGrid
+                  stroke="var(--color-border)"
+                  strokeDasharray="3 3"
+                  vertical={false}
+                />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }}
+                />
+                <YAxis
+                  domain={[0, 10]}
+                  tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }}
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: "var(--color-card)",
+                    border: "1px solid var(--color-border)",
+                    borderRadius: 12,
+                  }}
+                />
+                <Bar dataKey="value" radius={[8, 8, 0, 0]} fill="var(--color-leaf)" />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
       </Card>
     </div>
   );
 }
 
-function cohortAverages() {
+function cohortAverages(feedbackEntries: FeedbackEntry[]) {
   const avg = (k: "energy" | "digestion" | "sleep") =>
-    +(FEEDBACK.reduce((s, f) => s + f[k], 0) / FEEDBACK.length).toFixed(1);
+    +(feedbackEntries.reduce((s, f) => s + f[k], 0) / feedbackEntries.length).toFixed(1);
   return [
     { label: "Energy", value: avg("energy") },
     { label: "Digestion", value: avg("digestion") },
@@ -655,51 +941,67 @@ function Metric({ label, value }: { label: string; value: number }) {
 
 /* ---------- Insights ---------- */
 
-function InsightsView() {
-  const data = [
-    { week: "W1", recoveries: 6 },
-    { week: "W2", recoveries: 9 },
-    { week: "W3", recoveries: 12 },
-    { week: "W4", recoveries: 11 },
-    { week: "W5", recoveries: 14 },
-    { week: "W6", recoveries: 17 },
-  ];
+function InsightsView({ appointments }: { appointments: Appointment[] }) {
+  const data = useMemo(() => sessionsByHour(appointments), [appointments]);
+
   return (
     <Card className="p-5">
-      <h2 className="font-display text-xl font-semibold">Completed cycles per week</h2>
+      <h2 className="font-display text-xl font-semibold">Scheduled sessions by hour</h2>
       <p className="text-sm text-muted-foreground">
-        Patients completing 7- or 21-day Panchakarma programs
+        Timeline load based on today's MongoDB appointments
       </p>
       <div className="mt-5 h-80">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data}>
-            <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" vertical={false} />
-            <XAxis dataKey="week" tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} />
-            <YAxis tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} />
-            <Tooltip
-              contentStyle={{
-                background: "var(--color-card)",
-                border: "1px solid var(--color-border)",
-                borderRadius: 12,
-              }}
-            />
-            <Line
-              type="monotone"
-              dataKey="recoveries"
-              stroke="var(--color-primary)"
-              strokeWidth={3}
-              dot={{ r: 4, fill: "var(--color-saffron)" }}
-            />
-          </LineChart>
-        </ResponsiveContainer>
+        {data.length === 0 ? (
+          <div className="grid h-full place-items-center rounded-xl border border-dashed border-border bg-muted/30 px-4 text-center text-sm text-muted-foreground">
+            No active sessions today.
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={data}>
+              <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" vertical={false} />
+              <XAxis
+                dataKey="hour"
+                tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }}
+              />
+              <YAxis tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} />
+              <Tooltip
+                contentStyle={{
+                  background: "var(--color-card)",
+                  border: "1px solid var(--color-border)",
+                  borderRadius: 12,
+                }}
+              />
+              <Line
+                type="monotone"
+                dataKey="sessions"
+                stroke="var(--color-primary)"
+                strokeWidth={3}
+                dot={{ r: 4, fill: "var(--color-saffron)" }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        )}
       </div>
     </Card>
   );
 }
 
+function sessionsByHour(appointments: Appointment[]) {
+  const buckets = new Map<string, { hour: string; sessions: number; minutes: number }>();
+  appointments.forEach((appointment) => {
+    const hour = `${appointment.time.slice(0, 2)}:00`;
+    const existing = buckets.get(hour) ?? { hour, sessions: 0, minutes: 0 };
+    existing.sessions += 1;
+    existing.minutes += appointment.duration;
+    buckets.set(hour, existing);
+  });
+
+  return Array.from(buckets.values()).sort((a, b) => a.hour.localeCompare(b.hour));
+}
+
 /* ---------- Notifications ---------- */
 
-function NotificationsBell() {
+function NotificationsBell({ notifications }: { notifications: NotificationItem[] }) {
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -714,17 +1016,23 @@ function NotificationsBell() {
           <p className="text-xs text-muted-foreground">Real-time clinic alerts</p>
         </div>
         <ScrollArea className="max-h-80">
-          <ul className="divide-y divide-border">
-            {DOCTOR_NOTIFICATIONS.map((n) => (
-              <li key={n.id} className="px-4 py-3">
-                <p className="text-sm font-medium">{n.title}</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">{n.body}</p>
-                <p className="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-                  {n.time}
-                </p>
-              </li>
-            ))}
-          </ul>
+          {notifications.length === 0 ? (
+            <div className="px-4 py-6 text-center text-sm text-muted-foreground">
+              No clinic alerts.
+            </div>
+          ) : (
+            <ul className="divide-y divide-border">
+              {notifications.map((n) => (
+                <li key={n._id} className="px-4 py-3">
+                  <p className="text-sm font-medium">{n.title}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{n.body}</p>
+                  <p className="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                    {n.time}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
         </ScrollArea>
       </PopoverContent>
     </Popover>

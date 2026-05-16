@@ -1,4 +1,4 @@
-import mongoose, { Document, Schema } from "mongoose";
+import mongoose, { Document, Schema, Types } from "mongoose";
 
 export type UserRole = "doctor" | "patient";
 
@@ -7,6 +7,7 @@ export interface IUser extends Document {
   email: string;
   password: string;
   role: UserRole;
+  assignedDoctor?: Types.ObjectId;
 }
 
 const UserSchema: Schema = new Schema<IUser>(
@@ -21,6 +22,7 @@ const UserSchema: Schema = new Schema<IUser>(
     },
     password: { type: String, required: true },
     role: { type: String, enum: ["doctor", "patient"], required: true },
+    assignedDoctor: { type: Schema.Types.ObjectId, ref: "User" },
   },
   { timestamps: true },
 );

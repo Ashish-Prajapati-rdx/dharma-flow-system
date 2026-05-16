@@ -59,7 +59,19 @@ export const login: RequestHandler = async (req, res) => {
       expiresIn: "1d",
     });
 
-    res.json({ token, role: user.role, name: user.name });
+    res.json({
+      token,
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+      userId: user._id,
+      role: user.role,
+      name: user.name,
+      email: user.email,
+    });
   } catch (error) {
     console.error("Login error:", error);
     res.status(500).json({ message: "Server error." });

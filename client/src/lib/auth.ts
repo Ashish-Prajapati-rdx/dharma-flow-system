@@ -1,12 +1,14 @@
-// Mock auth + data store using localStorage. No backend required.
+// Browser session store for API-authenticated users.
 import { useEffect, useState } from "react";
 
 export type Role = "doctor" | "patient";
 
 export interface SessionUser {
+  id?: string;
   role: Role;
   name: string;
   email: string;
+  token?: string;
 }
 
 const KEY = "ayursutra_session";
