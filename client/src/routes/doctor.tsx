@@ -151,6 +151,9 @@ function DoctorDashboard() {
     setPatientsError(null);
 
     const loadClinic = async () => {
+      // 🔥 Debug 1: Check session ID before making the API call
+      console.log("DEBUG FRONTEND ID:", session.id);
+
       const headers = authHeaders(session);
       const [appointmentsResult, patientsResult] = await Promise.allSettled([
         axios.get<Appointment[]>(`http://localhost:5000/api/appointments/doctor/${session.id}`, {
@@ -161,6 +164,9 @@ function DoctorDashboard() {
           headers,
         }),
       ]);
+
+      // 🔥 Debug 2: Check raw response from Express server
+      console.log("PATIENTS API RESPONSE:", patientsResult);
 
       if (ignore) return;
 

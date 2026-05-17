@@ -1,3 +1,4 @@
+import { sendEmail } from "../utils/emailService";
 import type { RequestHandler } from "express";
 import User, { type UserRole } from "../models/User";
 import bcrypt from "bcryptjs";
@@ -22,11 +23,37 @@ export const register: RequestHandler = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const user = new User({ name, email, password: hashedPassword, role });
+
+    // 1. Sabse pehle database mein data save karo securely
     await user.save();
+
+    // 2. Response frontend ko TURANT bhej do taaki screen freeze na ho
     res.status(201).json({ message: "User registered successfully." });
+
+    // 3. Email ko background mein aaram se bhejte raho (Non-blocking execution)
+    setImmediate(() => {
+      sendEmail({
+        to: user.email,
+        subject: "Welcome to AyurSutra — Your Panchakarma OS Account is Ready!",
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #fafaf9;">
+            <h2 style="color: #059669; font-size: 24px; font-weight: bold; border-bottom: 2px solid #10b981; padding-bottom: 10px;">🍃 Welcome to AyurSutra</h2>
+            <p style="font-size: 16px; color: #4b5563; line-height: 1.5;">Namaste <strong>${user.name}</strong>,</p>
+            <p style="font-size: 14px; color: #4b5563; line-height: 1.5;">Your account has been successfully created on AyurSutra as a <strong>${user.role}</strong>.</p>
+            <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 25px 0;" />
+            <p style="font-size: 12px; color: #9ca3af; text-align: center;">Automated notification from AyurSutra Suite for SIH.</p>
+          </div>
+        `,
+      }).catch((err) =>
+        console.error(" Background email dispatch failed:", err),
+      );
+    });
   } catch (error) {
     console.error("Registration error:", error);
-    res.status(500).json({ message: "Server error." });
+    // Double headers block check safe guard
+    if (!res.headersSent) {
+      res.status(500).json({ message: "Server error." });
+    }
   }
 };
 
