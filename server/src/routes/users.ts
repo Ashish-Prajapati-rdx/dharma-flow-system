@@ -10,7 +10,7 @@ const isValidObjectId = (id: unknown): id is string =>
 router.get("/doctors", async (_req, res) => {
   try {
     const doctors = await User.find({ role: "doctor" })
-      .select("_id name email role")
+      .select("_id name email role emailVerified")
       .sort({ name: 1 });
 
     res.json(doctors);
@@ -28,7 +28,9 @@ router.get("/patients", async (req, res) => {
     }
 
     const patients = await User.find(filter)
-      .select("_id name email role assignedDoctor")
+      .select(
+        "_id name email role assignedDoctor emailVerified healthMetrics treatmentProfile",
+      )
       .sort({ name: 1 });
 
     res.json(patients);
@@ -74,6 +76,9 @@ router.post("/patient/assign-doctor", async (req, res) => {
         email: patient.email,
         role: patient.role,
         assignedDoctor: patient.assignedDoctor,
+        emailVerified: patient.emailVerified,
+        healthMetrics: patient.healthMetrics,
+        treatmentProfile: patient.treatmentProfile,
       },
       doctor: {
         _id: doctor._id,

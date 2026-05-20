@@ -52,7 +52,20 @@ export const Route = createFileRoute("/patient")({
   component: PatientDashboard,
 });
 
-type TherapyStatus = "Scheduled" | "Completed";
+type TreatmentStatus = "scheduled" | "ongoing" | "completed" | "missed";
+
+interface HealthMetrics {
+  digestion?: number;
+  sleepQuality?: number;
+  energyLevel?: number;
+  lastUpdatedAt?: string;
+}
+
+interface TreatmentProfile {
+  currentDayNumber?: number;
+  cycleLength?: number;
+  lastProgressAt?: string;
+}
 
 interface MongoUser {
   _id: string;
@@ -60,6 +73,8 @@ interface MongoUser {
   email: string;
   role: "doctor" | "patient";
   assignedDoctor?: string;
+  healthMetrics?: HealthMetrics;
+  treatmentProfile?: TreatmentProfile;
 }
 
 interface PatientAppointment {
@@ -67,10 +82,27 @@ interface PatientAppointment {
   patientId: string | MongoUser;
   doctorId: string | MongoUser;
   therapyName: string;
+  appointmentDate: string;
+  timeSlot: string;
   time: string;
   duration: number;
   room: string;
-  status: TherapyStatus;
+  treatmentStatus: TreatmentStatus;
+  status?: "Scheduled" | "Completed";
+  currentDayNumber: number;
+  progressTracking?: {
+    cycleLength?: number;
+    dailyMetrics?: Array<{
+      dayNumber: number;
+      appointmentDate: string;
+      digestion: number;
+      sleepQuality: number;
+      energyLevel: number;
+      notes?: string;
+      recordedAt?: string;
+    }>;
+    lastCheckedAt?: string;
+  };
 }
 
 interface DetoxPlan {
@@ -82,6 +114,8 @@ interface DetoxPlan {
   totalMinutes: number;
   rooms: string[];
   progress: number;
+  currentDayNumber: number;
+  cycleLength: number;
 }
 
 interface RecoveryPoint {
@@ -103,7 +137,6 @@ function PatientDashboard() {
   const navigate = useNavigate();
   const [patientSession, setPatientSession] = useState<SessionUser | null>(getSession());
   const [appointments, setAppointments] = useState<PatientAppointment[]>([]);
-  const [recoveryTimeline] = useState<RecoveryPoint[]>([]);
   const [notifications] = useState<PatientNotification[]>([]);
   const [isLoadingAppointments, setIsLoadingAppointments] = useState(true);
   const [appointmentsError, setAppointmentsError] = useState<string | null>(null);
@@ -133,7 +166,7 @@ function PatientDashboard() {
       })
       .then(({ data }) => {
         if (ignore) return;
-        setAppointments(data.sort((x, y) => x.time.localeCompare(y.time)));
+        setAppointments(data.sort(comparePatientAppointments));
       })
       .catch((error) => {
         if (ignore) return;
@@ -154,9 +187,10 @@ function PatientDashboard() {
     () => buildDetoxPlan(patientSession, appointments),
     [patientSession, appointments],
   );
+  const recoveryTimeline = useMemo(() => buildRecoveryTimeline(appointments), [appointments]);
   const patientName = patientSession?.name ?? "Patient";
   const nextSessionDisplay = activePlan
-    ? `${activePlan.nextAppointment.time} - ${activePlan.nextAppointment.therapyName}`
+    ? `${activePlan.nextAppointment.timeSlot} - ${activePlan.nextAppointment.therapyName}`
     : "No active sessions today";
 
   return (
@@ -172,12 +206,12 @@ function PatientDashboard() {
                 {isLoadingAppointments
                   ? "Loading care plan"
                   : activePlan
-                    ? `${activePlan.completedSessions}/${activePlan.totalSessions} sessions completed`
+                    ? `Day ${activePlan.currentDayNumber} of ${activePlan.cycleLength}`
                     : "No active detox plan"}
               </p>
               <h1 className="mt-2 font-display text-4xl font-semibold sm:text-5xl">
                 {activePlan
-                  ? `Your ${activePlan.totalSessions}-session therapy schedule`
+                  ? "Your 21-day Panchakarma timeline"
                   : "Your care plan is ready when sessions are scheduled"}
               </h1>
               <p className="mt-3 max-w-xl text-white/85">
@@ -263,6 +297,7 @@ function PatientDashboard() {
               appointments={appointments}
               isLoading={isLoadingAppointments}
               error={appointmentsError}
+              currentDayNumber={activePlan?.currentDayNumber ?? 1}
             />
           </TabsContent>
 
@@ -271,7 +306,20 @@ function PatientDashboard() {
           </TabsContent>
 
           <TabsContent value="report">
-            <SymptomForm patientName={patientName} />
+            <SymptomForm
+              patientName={patientName}
+              appointment={activePlan?.nextAppointment ?? null}
+              patientSession={patientSession}
+              onProgressSaved={(updatedAppointment) =>
+                setAppointments((prev) =>
+                  prev
+                    .map((appointment) =>
+                      appointment._id === updatedAppointment._id ? updatedAppointment : appointment,
+                    )
+                    .sort(comparePatientAppointments),
+                )
+              }
+            />
           </TabsContent>
 
           <TabsContent value="recovery">
@@ -303,16 +351,55 @@ function getAppointmentId(appointment: PatientAppointment) {
   return appointment._id;
 }
 
+function timeSlotToMinutes(timeSlot: string) {
+  const normalized = timeSlot.trim().toUpperCase();
+  const twelveHour = /^(\d{1,2}):([0-5]\d)\s?(AM|PM)$/.exec(normalized);
+  if (twelveHour) {
+    const [, rawHour, rawMinutes, period] = twelveHour;
+    let hour = Number(rawHour);
+    if (period === "AM" && hour === 12) hour = 0;
+    if (period === "PM" && hour !== 12) hour += 12;
+    return hour * 60 + Number(rawMinutes);
+  }
+
+  const twentyFourHour = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(normalized);
+  if (!twentyFourHour) return Number.POSITIVE_INFINITY;
+  return Number(twentyFourHour[1]) * 60 + Number(twentyFourHour[2]);
+}
+
+function comparePatientAppointments(a: PatientAppointment, b: PatientAppointment) {
+  if (a.currentDayNumber !== b.currentDayNumber) {
+    return a.currentDayNumber - b.currentDayNumber;
+  }
+
+  if (a.appointmentDate !== b.appointmentDate) {
+    return a.appointmentDate.localeCompare(b.appointmentDate);
+  }
+
+  return timeSlotToMinutes(a.timeSlot ?? a.time) - timeSlotToMinutes(b.timeSlot ?? b.time);
+}
+
 function buildDetoxPlan(
   patientSession: SessionUser | null,
   appointments: PatientAppointment[],
 ): DetoxPlan | null {
   if (appointments.length === 0) return null;
 
-  const completedSessions = appointments.filter((a) => a.status === "Completed").length;
-  const nextAppointment = appointments.find((a) => a.status === "Scheduled") ?? appointments[0];
+  const completedSessions = appointments.filter((a) => a.treatmentStatus === "completed").length;
+  const nextAppointment =
+    appointments.find(
+      (a) => a.treatmentStatus === "scheduled" || a.treatmentStatus === "ongoing",
+    ) ?? appointments[0];
   const rooms = Array.from(new Set(appointments.map((a) => a.room).filter(Boolean)));
   const totalMinutes = appointments.reduce((sum, a) => sum + a.duration, 0);
+  const patientRef = nextAppointment.patientId;
+  const profile =
+    typeof patientRef === "object" && patientRef !== null ? patientRef.treatmentProfile : undefined;
+  const currentDayNumber = Math.min(
+    Math.max(profile?.currentDayNumber ?? nextAppointment.currentDayNumber ?? 1, 1),
+    21,
+  );
+  const cycleLength = profile?.cycleLength ?? 21;
 
   return {
     patientName: patientSession?.name ?? getUserName(nextAppointment.patientId, "Patient"),
@@ -322,8 +409,70 @@ function buildDetoxPlan(
     completedSessions,
     totalMinutes,
     rooms,
-    progress: Math.round((completedSessions / appointments.length) * 100),
+    progress: Math.round((currentDayNumber / cycleLength) * 100),
+    currentDayNumber,
+    cycleLength,
   };
+}
+
+function buildRecoveryTimeline(appointments: PatientAppointment[]): RecoveryPoint[] {
+  return appointments
+    .flatMap((appointment) => appointment.progressTracking?.dailyMetrics ?? [])
+    .sort((a, b) => a.dayNumber - b.dayNumber)
+    .map((metric) => ({
+      day: `Day ${metric.dayNumber}`,
+      energy: metric.energyLevel,
+      sleep: metric.sleepQuality,
+      digestion: metric.digestion,
+    }));
+}
+
+function getTreatmentInstructions(therapyName: string) {
+  const normalized = therapyName.toLowerCase();
+  const fallback = {
+    pre: [
+      "Arrive 15 minutes early and avoid rushing before the procedure.",
+      "Keep meals light unless your practitioner has given a specific diet plan.",
+      "Share sleep, digestion, appetite, and energy observations with the team.",
+    ],
+    post: [
+      "Rest quietly after the session and avoid cold drinks or heavy exertion.",
+      "Follow the diet and bathing timing advised by your practitioner.",
+      "Report unusual discomfort, dizziness, nausea, or fatigue promptly.",
+    ],
+  };
+
+  if (normalized.includes("nasya")) {
+    return {
+      pre: [
+        "Avoid heavy meals for at least 2 hours before therapy.",
+        "Keep the head, neck, and shoulders relaxed before arrival.",
+        "Avoid strong fragrances, nasal sprays, or cold compresses unless prescribed.",
+      ],
+      post: [
+        "Avoid dust, wind, cold air, and loud speaking immediately after therapy.",
+        "Sip warm water and rest with the head protected.",
+        "Report headache, irritation, or excess nasal discharge.",
+      ],
+    };
+  }
+
+  if (normalized.includes("basti")) {
+    return {
+      pre: [
+        "Follow the meal timing given by your doctor.",
+        "Avoid strenuous exercise before arrival.",
+        "Report constipation, loose stools, abdominal pain, or appetite changes.",
+      ],
+      post: [
+        "Stay available until your practitioner confirms the response is stable.",
+        "Prefer warm, simple food and avoid raw, cold, or heavy items.",
+        "Track bowel response and abdominal comfort in the daily report.",
+      ],
+    };
+  }
+
+  return fallback;
 }
 
 function Mini({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) {
@@ -342,19 +491,17 @@ function TimelineView({
   appointments,
   isLoading,
   error,
+  currentDayNumber,
 }: {
   appointments: PatientAppointment[];
   isLoading: boolean;
   error: string | null;
+  currentDayNumber: number;
 }) {
-  const completedPct =
-    appointments.length === 0
-      ? 0
-      : Math.round(
-          (appointments.filter((appointment) => appointment.status === "Completed").length /
-            appointments.length) *
-            100,
-        );
+  const completedPct = Math.round((currentDayNumber / 21) * 100);
+  const appointmentsByDay = new Map(
+    appointments.map((appointment) => [appointment.currentDayNumber, appointment]),
+  );
 
   return (
     <Card className="p-6">
@@ -379,25 +526,23 @@ function TimelineView({
         </div>
       ) : (
         <>
-          <div className="relative mt-8">
-            <div className="absolute inset-x-0 top-5 h-1.5 rounded-full bg-muted" />
-            <div
-              className="absolute left-0 top-5 h-1.5 rounded-full bg-leaf-grad"
-              style={{ width: `${completedPct}%` }}
-            />
-            <div
-              className="relative grid gap-4"
-              style={{
-                gridTemplateColumns: `repeat(${appointments.length}, minmax(0, 1fr))`,
-              }}
-            >
-              {appointments.map((appointment, index) => {
-                const done = appointment.status === "Completed";
-                const current = index === 0 && appointment.status === "Scheduled";
+          <div className="mt-8">
+            <div className="mb-2 flex justify-between text-xs text-muted-foreground">
+              <span>21-day treatment cycle</span>
+              <span>{completedPct}%</span>
+            </div>
+            <Progress value={completedPct} className="h-2" />
+            <div className="mt-5 grid grid-cols-7 gap-2 sm:grid-cols-[repeat(21,minmax(0,1fr))]">
+              {Array.from({ length: 21 }, (_, index) => {
+                const dayNumber = index + 1;
+                const appointment = appointmentsByDay.get(dayNumber);
+                const done =
+                  appointment?.treatmentStatus === "completed" || dayNumber < currentDayNumber;
+                const current = dayNumber === currentDayNumber;
                 return (
-                  <div key={getAppointmentId(appointment)} className="flex flex-col items-center">
+                  <div key={dayNumber} className="flex flex-col items-center">
                     <div
-                      className={`grid h-10 w-10 place-items-center rounded-full border-2 text-xs font-semibold transition ${
+                      className={`grid h-9 w-9 place-items-center rounded-full border-2 text-xs font-semibold transition ${
                         current
                           ? "border-saffron bg-saffron text-saffron-foreground shadow-soft scale-110"
                           : done
@@ -405,9 +550,11 @@ function TimelineView({
                             : "border-border bg-card text-muted-foreground"
                       }`}
                     >
-                      {done ? <CheckCircle2 className="h-4 w-4" /> : index + 1}
+                      {done ? <CheckCircle2 className="h-4 w-4" /> : dayNumber}
                     </div>
-                    <p className="mt-1.5 text-[10px] text-muted-foreground">{appointment.time}</p>
+                    <p className="mt-1.5 text-[10px] text-muted-foreground">
+                      {appointment?.timeSlot ?? `D${dayNumber}`}
+                    </p>
                   </div>
                 );
               })}
@@ -419,21 +566,24 @@ function TimelineView({
               <div
                 key={getAppointmentId(appointment)}
                 className={`rounded-2xl border p-5 transition ${
-                  appointment.status === "Scheduled"
+                  appointment.treatmentStatus === "scheduled" ||
+                  appointment.treatmentStatus === "ongoing"
                     ? "border-primary bg-primary/5 shadow-soft"
                     : "border-border bg-card"
                 }`}
               >
                 <p className="text-xs uppercase tracking-widest text-muted-foreground">
-                  {appointment.time} · {appointment.duration}m
+                  Day {appointment.currentDayNumber} · {appointment.appointmentDate} ·{" "}
+                  {appointment.timeSlot} · {appointment.duration}m
                 </p>
                 <p className="mt-1 font-display text-xl font-semibold">{appointment.therapyName}</p>
                 <p className="mt-1 text-sm text-muted-foreground">
                   {appointment.room} with {getUserName(appointment.doctorId, "your practitioner")}
                 </p>
-                {appointment.status === "Scheduled" && (
+                {(appointment.treatmentStatus === "scheduled" ||
+                  appointment.treatmentStatus === "ongoing") && (
                   <Badge className="mt-3 bg-saffron text-saffron-foreground hover:bg-saffron">
-                    Scheduled
+                    {appointment.treatmentStatus}
                   </Badge>
                 )}
               </div>
@@ -449,6 +599,7 @@ function TimelineView({
 
 function PrecautionsView({ therapyName }: { therapyName?: string }) {
   const displayName = therapyName ?? "your next therapy";
+  const instructions = getTreatmentInstructions(displayName);
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
@@ -462,9 +613,11 @@ function PrecautionsView({ therapyName }: { therapyName?: string }) {
             <h3 className="font-display text-xl font-semibold">Before {displayName}</h3>
           </div>
         </div>
-        <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-8 text-center text-sm text-muted-foreground">
-          No pre-procedure instructions published yet.
-        </div>
+        <ul className="space-y-2 rounded-xl border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+          {instructions.pre.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
       </Card>
 
       <Card className="p-6">
@@ -479,9 +632,11 @@ function PrecautionsView({ therapyName }: { therapyName?: string }) {
             <h3 className="font-display text-xl font-semibold">After {displayName}</h3>
           </div>
         </div>
-        <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-8 text-center text-sm text-muted-foreground">
-          No post-procedure instructions published yet.
-        </div>
+        <ul className="space-y-2 rounded-xl border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+          {instructions.post.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
       </Card>
     </div>
   );
@@ -489,19 +644,54 @@ function PrecautionsView({ therapyName }: { therapyName?: string }) {
 
 /* ---------- Symptom Form ---------- */
 
-function SymptomForm({ patientName }: { patientName: string }) {
-  const [energy, setEnergy] = useState([6]);
-  const [sleep, setSleep] = useState([7]);
-  const [digestion, setDigestion] = useState([6]);
+function SymptomForm({
+  patientName,
+  appointment,
+  patientSession,
+  onProgressSaved,
+}: {
+  patientName: string;
+  appointment: PatientAppointment | null;
+  patientSession: SessionUser | null;
+  onProgressSaved: (appointment: PatientAppointment) => void;
+}) {
+  const [energy, setEnergy] = useState([3]);
+  const [sleep, setSleep] = useState([3]);
+  const [digestion, setDigestion] = useState([3]);
   const [note, setNote] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [availableTags] = useState<string[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    toast.success("Daily report submitted to your practitioner");
-    setNote("");
-    setTags([]);
+    if (!appointment) {
+      toast.error("No active appointment is available for today's report.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const { data } = await axios.post<PatientAppointment>(
+        `/api/appointments/${appointment._id}/progress`,
+        {
+          energyLevel: energy[0],
+          sleepQuality: sleep[0],
+          digestion: digestion[0],
+          notes: [note, ...tags].filter(Boolean).join(" | "),
+        },
+        { headers: authHeaders(patientSession) },
+      );
+
+      onProgressSaved(data);
+      toast.success("Daily report submitted to your practitioner");
+      setNote("");
+      setTags([]);
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Unable to submit today's report."));
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -510,7 +700,11 @@ function SymptomForm({ patientName }: { patientName: string }) {
         <h2 className="font-display text-xl font-semibold">
           How are you feeling today, {patientName.split(" ")[0]}?
         </h2>
-        <p className="text-sm text-muted-foreground">Your honest report shapes tomorrow's care.</p>
+        <p className="text-sm text-muted-foreground">
+          {appointment
+            ? `Day ${appointment.currentDayNumber}/21 report for ${appointment.therapyName}`
+            : "Your honest report shapes tomorrow's care."}
+        </p>
       </div>
       <form onSubmit={submit} className="grid gap-6 md:grid-cols-2">
         <SliderField label="Energy" value={energy} setValue={setEnergy} />
@@ -553,8 +747,8 @@ function SymptomForm({ patientName }: { patientName: string }) {
           />
         </div>
         <div className="md:col-span-2">
-          <Button type="submit" size="lg">
-            Submit today's report
+          <Button type="submit" size="lg" disabled={isSubmitting || !appointment}>
+            {isSubmitting ? "Submitting..." : "Submit today's report"}
           </Button>
         </div>
       </form>
@@ -577,10 +771,10 @@ function SliderField({
         <Label>{label}</Label>
         <span className="font-display text-2xl font-semibold text-primary">
           {value[0]}
-          <span className="text-sm text-muted-foreground">/10</span>
+          <span className="text-sm text-muted-foreground">/5</span>
         </span>
       </div>
-      <Slider min={0} max={10} step={1} value={value} onValueChange={setValue} />
+      <Slider min={1} max={5} step={1} value={value} onValueChange={setValue} />
     </div>
   );
 }
@@ -619,7 +813,7 @@ function RecoveryView({ recoveryTimeline }: { recoveryTimeline: RecoveryPoint[] 
               <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="day" tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} />
               <YAxis
-                domain={[0, 10]}
+                domain={[1, 5]}
                 tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }}
               />
               <Tooltip

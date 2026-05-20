@@ -69,7 +69,20 @@ export const Route = createFileRoute("/doctor")({
 });
 
 type UserRole = "doctor" | "patient";
-type TherapyStatus = "Scheduled" | "Completed";
+type TreatmentStatus = "scheduled" | "ongoing" | "completed" | "missed";
+
+interface HealthMetrics {
+  digestion?: number;
+  sleepQuality?: number;
+  energyLevel?: number;
+  lastUpdatedAt?: string;
+}
+
+interface TreatmentProfile {
+  currentDayNumber?: number;
+  cycleLength?: number;
+  lastProgressAt?: string;
+}
 
 interface MongoUser {
   _id: string;
@@ -77,6 +90,9 @@ interface MongoUser {
   email: string;
   role: UserRole;
   assignedDoctor?: string;
+  emailVerified?: boolean;
+  healthMetrics?: HealthMetrics;
+  treatmentProfile?: TreatmentProfile;
 }
 
 type UserReference = string | MongoUser;
@@ -86,10 +102,27 @@ interface Appointment {
   patientId: UserReference;
   doctorId: UserReference;
   therapyName: string;
+  appointmentDate: string;
+  timeSlot: string;
   time: string;
   duration: number;
   room: string;
-  status: TherapyStatus;
+  treatmentStatus: TreatmentStatus;
+  status?: "Scheduled" | "Completed";
+  currentDayNumber: number;
+  progressTracking?: {
+    cycleLength?: number;
+    dailyMetrics?: Array<{
+      dayNumber: number;
+      appointmentDate: string;
+      digestion: number;
+      sleepQuality: number;
+      energyLevel: number;
+      notes?: string;
+      recordedAt?: string;
+    }>;
+    lastCheckedAt?: string;
+  };
 }
 
 interface FeedbackEntry {
@@ -113,65 +146,138 @@ interface NotificationItem {
   type: "session" | "diet" | "alert";
 }
 
+type StoredSessionShape = Partial<SessionUser> & {
+  _id?: string;
+  userId?: string;
+  user?: Partial<SessionUser> & {
+    _id?: string;
+  };
+};
+
+function readDoctorSessionFromStorage(): SessionUser | null {
+  if (typeof window === "undefined") return null;
+
+  const saved =
+    localStorage.getItem("doctor_session") ||
+    localStorage.getItem("auth_token") ||
+    localStorage.getItem("ayursutra_session");
+
+  if (!saved) return getSession();
+
+  try {
+    return normalizeStoredSession(JSON.parse(saved)) ?? getSession();
+  } catch {
+    return getSession();
+  }
+}
+
+function normalizeStoredSession(value: unknown): SessionUser | null {
+  if (!value || typeof value !== "object") return null;
+
+  const stored = value as StoredSessionShape;
+  const role = stored.role ?? stored.user?.role;
+
+  if (role !== "doctor" && role !== "patient") return null;
+
+  return {
+    id: stored.id ?? stored.userId ?? stored._id ?? stored.user?.id ?? stored.user?._id,
+    role,
+    name: stored.name ?? stored.user?.name ?? "",
+    email: stored.email ?? stored.user?.email ?? "",
+    token: stored.token,
+  };
+}
+
 function DoctorDashboard() {
   const navigate = useNavigate();
-  const [doctorSession, setDoctorSession] = useState<SessionUser | null>(null);
+  const [session, setSession] = useState<SessionUser | null>(() => readDoctorSessionFromStorage());
+  const [hasCheckedStoredSession, setHasCheckedStoredSession] = useState(false);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [patients, setPatients] = useState<MongoUser[]>([]);
   const [feedbackEntries] = useState<FeedbackEntry[]>([]);
   const [notifications] = useState<NotificationItem[]>([]);
+  const [isHydrating, setIsHydrating] = useState(true);
   const [isScheduleLoading, setIsScheduleLoading] = useState(true);
   const [isPatientsLoading, setIsPatientsLoading] = useState(true);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [patientsError, setPatientsError] = useState<string | null>(null);
 
   useEffect(() => {
-    const session = getSession();
-    if (!session || session.role !== "doctor") {
-      navigate({ to: "/login/doctor" });
-      return;
+    const syncSession = () => {
+      setSession(readDoctorSessionFromStorage());
+      setHasCheckedStoredSession(true);
+    };
+
+    syncSession();
+    window.addEventListener("ayursutra:session", syncSession);
+    window.addEventListener("storage", syncSession);
+
+    return () => {
+      window.removeEventListener("ayursutra:session", syncSession);
+      window.removeEventListener("storage", syncSession);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hasCheckedStoredSession || session) return;
+    navigate({ to: "/login/doctor" });
+  }, [hasCheckedStoredSession, navigate, session]);
+
+  useEffect(() => {
+    let ignore = false;
+    let loadingToast: string | undefined;
+
+    if (!session) {
+      setIsHydrating(true);
+      return () => {
+        ignore = true;
+      };
     }
 
-    setDoctorSession(session);
-    if (!session.id) {
+    if (session.role !== "doctor") {
+      navigate({ to: "/login/doctor" });
+      return () => {
+        ignore = true;
+      };
+    }
+
+    if (!session.id || !session.token) {
       setIsScheduleLoading(false);
       setIsPatientsLoading(false);
+      setIsHydrating(false);
       setScheduleError("Please sign in again so your doctor profile can be loaded.");
       setPatientsError("Please sign in again so your assigned patients can be loaded.");
       toast.error("Please sign in again to load your schedule.");
-      return;
+      return () => {
+        ignore = true;
+      };
     }
 
-    let ignore = false;
-    const loadingToast = toast.loading("Loading today's clinic...");
-
-    setIsScheduleLoading(true);
-    setIsPatientsLoading(true);
-    setScheduleError(null);
-    setPatientsError(null);
-
     const loadClinic = async () => {
-      // 🔥 Debug 1: Check session ID before making the API call
-      console.log("DEBUG FRONTEND ID:", session.id);
+      if (!session || !session.id || !session.token) return;
+
+      loadingToast = toast.loading("Loading today's clinic...");
+      setIsHydrating(true);
+      setIsScheduleLoading(true);
+      setIsPatientsLoading(true);
+      setScheduleError(null);
+      setPatientsError(null);
 
       const headers = authHeaders(session);
       const [appointmentsResult, patientsResult] = await Promise.allSettled([
-        axios.get<Appointment[]>(`http://localhost:5000/api/appointments/doctor/${session.id}`, {
+        axios.get<Appointment[]>(`/api/appointments/doctor/${session.id}/today`, {
           headers,
         }),
-        axios.get<MongoUser[]>("http://localhost:5000/api/users/patients", {
+        axios.get<MongoUser[]>("/api/users/patients", {
           params: { doctorId: session.id },
           headers,
         }),
       ]);
 
-      // 🔥 Debug 2: Check raw response from Express server
-      console.log("PATIENTS API RESPONSE:", patientsResult);
-
       if (ignore) return;
 
       if (appointmentsResult.status === "fulfilled") {
-        setAppointments(appointmentsResult.value.data.sort((x, y) => x.time.localeCompare(y.time)));
+        setAppointments(appointmentsResult.value.data.sort(compareAppointmentsByTime));
       } else {
         const message = getApiErrorMessage(
           appointmentsResult.reason,
@@ -194,7 +300,8 @@ function DoctorDashboard() {
 
       setIsScheduleLoading(false);
       setIsPatientsLoading(false);
-      toast.dismiss(loadingToast);
+      setIsHydrating(false);
+      if (loadingToast) toast.dismiss(loadingToast);
     };
 
     loadClinic().catch((error) => {
@@ -204,20 +311,23 @@ function DoctorDashboard() {
       setPatientsError(message);
       setIsScheduleLoading(false);
       setIsPatientsLoading(false);
-      toast.dismiss(loadingToast);
+      setIsHydrating(false);
+      if (loadingToast) toast.dismiss(loadingToast);
       toast.error(message);
     });
 
     return () => {
       ignore = true;
-      toast.dismiss(loadingToast);
+      if (loadingToast) toast.dismiss(loadingToast);
     };
-  }, [navigate]);
+    // The clinic fetch is intentionally locked to the doctor id hydration boundary.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.id]);
 
   const stats = [
     {
       label: "Today's sessions",
-      value: appointments.length.toString(),
+      value: isScheduleLoading ? "..." : appointments.length.toString(),
       icon: CalendarDays,
       tone: "primary",
     },
@@ -243,14 +353,37 @@ function DoctorDashboard() {
 
   const handleCancelAppointment = async (id: string) => {
     try {
-      const headers = authHeaders(doctorSession);
-      await axios.delete(`http://localhost:5000/api/appointments/${id}`, { headers });
+      const headers = authHeaders(session);
+      await axios.delete(`/api/appointments/${id}`, { headers });
       setAppointments((prev) => prev.filter((a) => a._id !== id));
       toast.success("Appointment cancelled successfully.");
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Failed to cancel assignment."));
     }
   };
+
+  const handleStatusChange = async (id: string, treatmentStatus: TreatmentStatus) => {
+    try {
+      const headers = authHeaders(session);
+      const { data } = await axios.patch<Appointment>(
+        `/api/appointments/${id}/status`,
+        { treatmentStatus },
+        { headers },
+      );
+      setAppointments((prev) =>
+        prev
+          .map((appointment) => (appointment._id === id ? data : appointment))
+          .sort(compareAppointmentsByTime),
+      );
+      toast.success(`Session marked ${treatmentStatus}.`);
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Failed to update session status."));
+    }
+  };
+
+  if (isHydrating) {
+    return <DoctorHydrationScreen />;
+  }
 
   return (
     <div className="min-h-screen">
@@ -275,11 +408,11 @@ function DoctorDashboard() {
           <div className="flex gap-2">
             <NotificationsBell notifications={notifications} />
             <NewAppointmentDialog
-              doctor={doctorSession}
+              doctor={session}
               patients={patients}
               isPatientsLoading={isPatientsLoading}
               onCreate={(a) =>
-                setAppointments((prev) => [...prev, a].sort((x, y) => x.time.localeCompare(y.time)))
+                setAppointments((prev) => [...prev, a].sort(compareAppointmentsByTime))
               }
             />
           </div>
@@ -335,6 +468,7 @@ function DoctorDashboard() {
               isLoading={isScheduleLoading}
               error={scheduleError}
               onCancel={handleCancelAppointment}
+              onStatusChange={handleStatusChange}
             />
           </TabsContent>
 
@@ -360,6 +494,25 @@ function DoctorDashboard() {
   );
 }
 
+function DoctorHydrationScreen() {
+  return (
+    <div className="min-h-screen">
+      <SiteHeader />
+      <main className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-7xl items-center px-4 py-8 sm:px-6">
+        <Card className="mx-auto w-full max-w-md p-8 text-center shadow-soft">
+          <div className="mx-auto grid h-12 w-12 place-items-center rounded-xl bg-primary/10 text-primary">
+            <Loader2 className="h-5 w-5 animate-spin" />
+          </div>
+          <h1 className="mt-4 font-display text-2xl font-semibold">Loading today's clinic</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Restoring your practitioner session and syncing the latest schedule.
+          </p>
+        </Card>
+      </main>
+    </div>
+  );
+}
+
 /* ---------- Schedule ---------- */
 
 function ScheduleView({
@@ -367,13 +520,16 @@ function ScheduleView({
   isLoading,
   error,
   onCancel,
+  onStatusChange,
 }: {
   appointments: Appointment[];
   isLoading: boolean;
   error: string | null;
   onCancel: (id: string) => void;
+  onStatusChange: (id: string, treatmentStatus: TreatmentStatus) => void;
 }) {
   const hours = Array.from({ length: 11 }, (_, i) => 8 + i); // 8–18
+  const nextAppointment = useMemo(() => getNextAppointment(appointments), [appointments]);
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
@@ -401,7 +557,7 @@ function ScheduleView({
         ) : (
           <div className="relative grid grid-cols-[60px_1fr] gap-2">
             {hours.map((h) => {
-              const slotApps = appointments.filter((a) => parseInt(a.time.split(":")[0], 10) === h);
+              const slotApps = appointments.filter((a) => getAppointmentHour(a) === h);
               return (
                 <div key={h} className="contents">
                   <div className="border-t border-border pt-1.5 text-xs text-muted-foreground">
@@ -410,7 +566,12 @@ function ScheduleView({
                   <div className="min-h-14 border-t border-border pt-1.5">
                     <div className="space-y-1.5">
                       {slotApps.map((a) => (
-                        <AppointmentRow key={a._id} app={a} onCancel={onCancel} />
+                        <AppointmentRow
+                          key={a._id}
+                          app={a}
+                          onCancel={onCancel}
+                          onStatusChange={onStatusChange}
+                        />
                       ))}
                     </div>
                   </div>
@@ -421,41 +582,96 @@ function ScheduleView({
         )}
       </Card>
 
-      <Card className="p-5">
-        <h2 className="font-display text-xl font-semibold">Room utilisation</h2>
-        <p className="text-sm text-muted-foreground">Booked minutes per therapy room today</p>
-        <div className="mt-5 h-64">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={roomUtilisation(appointments)}>
-              <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" vertical={false} />
-              <XAxis
-                dataKey="room"
-                tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }}
-              />
-              <YAxis tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} />
-              <Tooltip
-                cursor={{ fill: "var(--color-muted)" }}
-                contentStyle={{
-                  background: "var(--color-card)",
-                  border: "1px solid var(--color-border)",
-                  borderRadius: 12,
-                }}
-              />
-              <Bar dataKey="minutes" fill="var(--color-primary)" radius={[8, 8, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </Card>
+      <div className="space-y-6">
+        <NextSessionCard appointment={nextAppointment} />
+
+        <Card className="p-5">
+          <h2 className="font-display text-xl font-semibold">Room utilisation</h2>
+          <p className="text-sm text-muted-foreground">Booked minutes per therapy room today</p>
+          <div className="mt-5 h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={roomUtilisation(appointments)}>
+                <CartesianGrid
+                  stroke="var(--color-border)"
+                  strokeDasharray="3 3"
+                  vertical={false}
+                />
+                <XAxis
+                  dataKey="room"
+                  tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }}
+                />
+                <YAxis tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} />
+                <Tooltip
+                  cursor={{ fill: "var(--color-muted)" }}
+                  contentStyle={{
+                    background: "var(--color-card)",
+                    border: "1px solid var(--color-border)",
+                    borderRadius: 12,
+                  }}
+                />
+                <Bar dataKey="minutes" fill="var(--color-primary)" radius={[8, 8, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+      </div>
     </div>
   );
 }
 
-function AppointmentRow({ app, onCancel }: { app: Appointment; onCancel: (id: string) => void }) {
+function NextSessionCard({ appointment }: { appointment: Appointment | null }) {
+  if (!appointment) {
+    return (
+      <Card className="p-5">
+        <p className="text-xs uppercase tracking-widest text-muted-foreground">Next session</p>
+        <h2 className="mt-2 font-display text-xl font-semibold">No upcoming slot today</h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Scheduled and ongoing sessions for the current date will appear here.
+        </p>
+      </Card>
+    );
+  }
+
+  const patientName = getUserName(appointment.patientId, "Patient");
+  const progress = Math.round((appointment.currentDayNumber / 21) * 100);
+
+  return (
+    <Card className="border-primary/30 bg-primary/5 p-5 shadow-soft">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-widest text-primary">Next session</p>
+          <h2 className="mt-2 font-display text-2xl font-semibold">{appointment.therapyName}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {patientName} at {appointment.timeSlot} · {appointment.room}
+          </p>
+        </div>
+        <StatusBadge status={appointment.treatmentStatus} />
+      </div>
+      <div className="mt-5">
+        <div className="mb-1.5 flex justify-between text-xs text-muted-foreground">
+          <span>21-day cycle</span>
+          <span>Day {appointment.currentDayNumber} of 21</span>
+        </div>
+        <Progress value={progress} className="h-2" />
+      </div>
+    </Card>
+  );
+}
+
+function AppointmentRow({
+  app,
+  onCancel,
+  onStatusChange,
+}: {
+  app: Appointment;
+  onCancel: (id: string) => void;
+  onStatusChange: (id: string, treatmentStatus: TreatmentStatus) => void;
+}) {
   const therapy = getTherapyDisplay(app.therapyName);
   const patientName = getUserName(app.patientId, "Patient");
 
   return (
-    <div className="group flex items-center justify-between rounded-xl border border-border bg-card px-3 py-2 shadow-sm transition hover:border-primary/40">
+    <div className="group flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-3 py-2 shadow-sm transition hover:border-primary/40">
       <div className="flex items-center gap-3">
         <div className="grid h-9 w-9 place-items-center rounded-lg bg-leaf-grad text-leaf-foreground">
           <Stethoscope className="h-4 w-4 text-primary-foreground" />
@@ -469,19 +685,29 @@ function AppointmentRow({ app, onCancel }: { app: Appointment; onCancel: (id: st
           </p>
           <p className="text-xs text-muted-foreground">
             {patientName} · <Clock className="mr-0.5 inline h-3 w-3" />
-            {app.time} ({app.duration}m) · <MapPin className="mr-0.5 inline h-3 w-3" />
-            {app.room}
+            {app.timeSlot} ({app.duration}m) · <MapPin className="mr-0.5 inline h-3 w-3" />
+            {app.room} · Day {app.currentDayNumber}/21
           </p>
         </div>
       </div>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="opacity-0 transition group-hover:opacity-100"
-        onClick={() => onCancel(app._id)}
-      >
-        Cancel
-      </Button>
+      <div className="flex flex-wrap items-center justify-end gap-1.5">
+        <StatusBadge status={app.treatmentStatus} />
+        {app.treatmentStatus === "scheduled" && (
+          <Button variant="outline" size="sm" onClick={() => onStatusChange(app._id, "ongoing")}>
+            Start
+          </Button>
+        )}
+        {app.treatmentStatus === "ongoing" && (
+          <Button size="sm" onClick={() => onStatusChange(app._id, "completed")}>
+            Complete
+          </Button>
+        )}
+        {app.treatmentStatus === "scheduled" && (
+          <Button variant="ghost" size="sm" onClick={() => onCancel(app._id)}>
+            Cancel
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
@@ -512,6 +738,7 @@ function NewAppointmentDialog({
   const [isScheduling, setIsScheduling] = useState(false);
   const [patientId, setPatientId] = useState("");
   const [therapyName, setTherapyName] = useState("");
+  const [appointmentDate, setAppointmentDate] = useState(formatLocalDate());
   const [time, setTime] = useState("10:00");
   const [room, setRoom] = useState("Therapy Hall A");
   const [duration, setDuration] = useState("60");
@@ -530,12 +757,13 @@ function NewAppointmentDialog({
 
     try {
       const { data } = await axios.post<Appointment>(
-        "http://localhost:5000/api/appointments/new",
+        "/api/appointments/new",
         {
           patientId,
           doctorId: doctor.id,
           therapyName,
-          time,
+          appointmentDate,
+          timeSlot: time,
           duration: dur,
           room,
         },
@@ -610,7 +838,15 @@ function NewAppointmentDialog({
               </SelectContent>
             </Select>
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-1.5">
+              <Label>Date</Label>
+              <Input
+                type="date"
+                value={appointmentDate}
+                onChange={(e) => setAppointmentDate(e.target.value)}
+              />
+            </div>
             <div className="space-y-1.5">
               <Label>Time</Label>
               <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
@@ -660,6 +896,53 @@ function getApiErrorMessage(error: unknown, fallback: string) {
     return error.response?.data?.message ?? error.message ?? fallback;
   }
   return error instanceof Error ? error.message : fallback;
+}
+
+function formatLocalDate(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function timeSlotToMinutes(timeSlot: string) {
+  const normalized = timeSlot.trim().toUpperCase();
+  const twelveHour = /^(\d{1,2}):([0-5]\d)\s?(AM|PM)$/.exec(normalized);
+  if (twelveHour) {
+    const [, rawHour, rawMinutes, period] = twelveHour;
+    let hour = Number(rawHour);
+    if (period === "AM" && hour === 12) hour = 0;
+    if (period === "PM" && hour !== 12) hour += 12;
+    return hour * 60 + Number(rawMinutes);
+  }
+
+  const twentyFourHour = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(normalized);
+  if (!twentyFourHour) return Number.POSITIVE_INFINITY;
+  return Number(twentyFourHour[1]) * 60 + Number(twentyFourHour[2]);
+}
+
+function compareAppointmentsByTime(a: Appointment, b: Appointment) {
+  return timeSlotToMinutes(a.timeSlot ?? a.time) - timeSlotToMinutes(b.timeSlot ?? b.time);
+}
+
+function getAppointmentHour(appointment: Appointment) {
+  return Math.floor(timeSlotToMinutes(appointment.timeSlot ?? appointment.time) / 60);
+}
+
+function getNextAppointment(appointments: Appointment[]) {
+  const now = new Date();
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const actionable = appointments
+    .filter((appointment) => ["scheduled", "ongoing"].includes(appointment.treatmentStatus))
+    .sort(compareAppointmentsByTime);
+
+  return (
+    actionable.find(
+      (appointment) => timeSlotToMinutes(appointment.timeSlot ?? appointment.time) >= nowMinutes,
+    ) ??
+    actionable.find((appointment) => appointment.treatmentStatus === "ongoing") ??
+    null
+  );
 }
 
 function getUserName(ref: UserReference, fallback: string) {
@@ -741,7 +1024,8 @@ function PatientsView({
                 <th className="pb-3 font-medium">Patient</th>
                 <th className="pb-3 font-medium">Email</th>
                 <th className="pb-3 font-medium">Current therapy</th>
-                <th className="pb-3 font-medium">Sessions today</th>
+                <th className="pb-3 font-medium">21-day progress</th>
+                <th className="pb-3 font-medium">Latest metrics</th>
                 <th className="pb-3 font-medium">Status</th>
                 <th className="pb-3 font-medium">Assignment</th>
               </tr>
@@ -756,7 +1040,12 @@ function PatientsView({
                   (sum, a) => sum + a.duration,
                   0,
                 );
-                const pct = patientAppointments.length > 0 ? 100 : 0;
+                const currentDay =
+                  p.treatmentProfile?.currentDayNumber ??
+                  patientAppointments[0]?.currentDayNumber ??
+                  1;
+                const pct = Math.round((currentDay / 21) * 100);
+                const metrics = p.healthMetrics;
                 return (
                   <tr
                     key={p._id}
@@ -779,13 +1068,24 @@ function PatientsView({
                       <Badge variant="outline">{p.email}</Badge>
                     </td>
                     <td>{nextTherapy}</td>
-                    <td className="min-w-[140px]">
+                    <td className="min-w-[170px]">
                       <div className="flex items-center gap-2">
                         <Progress value={pct} className="h-2" />
-                        <span className="text-xs text-muted-foreground">
-                          {patientAppointments.length} / {scheduledMinutes}m
-                        </span>
+                        <span className="text-xs text-muted-foreground">Day {currentDay}/21</span>
                       </div>
+                      <p className="mt-1 text-[10px] text-muted-foreground">
+                        {patientAppointments.length} session(s), {scheduledMinutes}m today
+                      </p>
+                    </td>
+                    <td className="text-xs text-muted-foreground">
+                      {metrics ? (
+                        <span>
+                          D {metrics.digestion ?? "-"} · S {metrics.sleepQuality ?? "-"} · E{" "}
+                          {metrics.energyLevel ?? "-"}
+                        </span>
+                      ) : (
+                        "No report"
+                      )}
                     </td>
                     <td>
                       <StatusBadge
@@ -813,10 +1113,14 @@ function StatusBadge({ status }: { status: string }) {
     Completed: "bg-muted text-muted-foreground border-border",
     Scheduled: "bg-leaf/20 text-leaf-foreground border-leaf/30",
     "No sessions": "bg-muted text-muted-foreground border-border",
+    scheduled: "bg-leaf/20 text-leaf-foreground border-leaf/30",
+    ongoing: "bg-saffron/25 text-earth border-saffron/40",
+    completed: "bg-muted text-muted-foreground border-border",
+    missed: "bg-destructive/10 text-destructive border-destructive/30",
   };
   return (
     <span
-      className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium ${map[status]}`}
+      className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium ${map[status] ?? map["No sessions"]}`}
     >
       {status}
     </span>
@@ -995,7 +1299,8 @@ function InsightsView({ appointments }: { appointments: Appointment[] }) {
 function sessionsByHour(appointments: Appointment[]) {
   const buckets = new Map<string, { hour: string; sessions: number; minutes: number }>();
   appointments.forEach((appointment) => {
-    const hour = `${appointment.time.slice(0, 2)}:00`;
+    const startMinutes = timeSlotToMinutes(appointment.timeSlot ?? appointment.time);
+    const hour = `${String(Math.floor(startMinutes / 60)).padStart(2, "0")}:00`;
     const existing = buckets.get(hour) ?? { hour, sessions: 0, minutes: 0 };
     existing.sessions += 1;
     existing.minutes += appointment.duration;

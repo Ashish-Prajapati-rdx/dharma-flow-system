@@ -22,7 +22,21 @@ export const register: RequestHandler = async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const user = new User({ name, email, password: hashedPassword, role });
+    const user = new User({
+      name,
+      email,
+      password: hashedPassword,
+      role,
+      ...(role === "patient"
+        ? {
+            treatmentProfile: {
+              currentDayNumber: 1,
+              cycleLength: 21,
+              startedAt: new Date(),
+            },
+          }
+        : {}),
+    });
 
     // 1. Sabse pehle database mein data save karo securely
     await user.save();
