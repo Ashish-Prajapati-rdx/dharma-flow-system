@@ -27,6 +27,7 @@ import {
 } from "recharts";
 import { SiteHeader } from "@/components/site-header";
 import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -53,6 +54,12 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import toast from "react-hot-toast";
 import { getSession, type SessionUser } from "@/lib/auth";
+
+const API_BASE_URL = "http://localhost:5000/api";
+const APPOINTMENTS_API_URL = `${API_BASE_URL}/appointments`;
+const DEFAULT_TIMELINE_HOURS = Array.from({ length: 11 }, (_, i) => 8 + i);
+const TIMELINE_SKELETON_ROWS = Array.from({ length: 6 }, (_, i) => i);
+const UNSCHEDULED_TIMELINE_SLOT = "unscheduled";
 
 export const Route = createFileRoute("/doctor")({
   head: () => ({
@@ -146,6 +153,11 @@ interface NotificationItem {
   type: "session" | "diet" | "alert";
 }
 
+interface TimelineSlot {
+  key: string;
+  label: string;
+}
+
 type StoredSessionShape = Partial<SessionUser> & {
   _id?: string;
   userId?: string;
@@ -197,7 +209,7 @@ function DoctorDashboard() {
   const [feedbackEntries] = useState<FeedbackEntry[]>([]);
   const [notifications] = useState<NotificationItem[]>([]);
   const [isHydrating, setIsHydrating] = useState(true);
-  const [isScheduleLoading, setIsScheduleLoading] = useState(true);
+  const [isFetchingData, setIsFetchingData] = useState(true);
   const [isPatientsLoading, setIsPatientsLoading] = useState(true);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [patientsError, setPatientsError] = useState<string | null>(null);
@@ -229,6 +241,7 @@ function DoctorDashboard() {
 
     if (!session) {
       setIsHydrating(true);
+      setIsFetchingData(true);
       return () => {
         ignore = true;
       };
@@ -242,7 +255,7 @@ function DoctorDashboard() {
     }
 
     if (!session.id || !session.token) {
-      setIsScheduleLoading(false);
+      setIsFetchingData(false);
       setIsPatientsLoading(false);
       setIsHydrating(false);
       setScheduleError("Please sign in again so your doctor profile can be loaded.");
@@ -257,49 +270,67 @@ function DoctorDashboard() {
       if (!session || !session.id || !session.token) return;
 
       loadingToast = toast.loading("Loading today's clinic...");
-      setIsHydrating(true);
-      setIsScheduleLoading(true);
+      setIsHydrating(false);
+      setIsFetchingData(true);
       setIsPatientsLoading(true);
       setScheduleError(null);
       setPatientsError(null);
 
       const headers = authHeaders(session);
-      const [appointmentsResult, patientsResult] = await Promise.allSettled([
-        axios.get<Appointment[]>(`/api/appointments/doctor/${session.id}/today`, {
-          headers,
-        }),
-        axios.get<MongoUser[]>("/api/users/patients", {
-          params: { doctorId: session.id },
-          headers,
-        }),
-      ]);
+
+      const loadAppointments = async () => {
+        try {
+          const response = await axios.get<Appointment[]>(
+            `${APPOINTMENTS_API_URL}/doctor/${session.id}/today`,
+            { headers },
+          );
+
+          if (ignore) return;
+
+          if (response.status !== 200 || !Array.isArray(response.data)) {
+            throw new Error("Unable to verify today's schedule response.");
+          }
+
+          const nextAppointments = [...response.data].sort(compareAppointmentsByTime);
+          setAppointments(nextAppointments);
+        } catch (error) {
+          if (ignore) return;
+          const message = getApiErrorMessage(error, "Unable to load therapy schedule.");
+          setScheduleError(message);
+          toast.error(message);
+        } finally {
+          if (!ignore) setIsFetchingData(false);
+        }
+      };
+
+      const loadPatients = async () => {
+        try {
+          const response = await axios.get<MongoUser[]>(`${API_BASE_URL}/users/patients`, {
+            params: { doctorId: session.id },
+            headers,
+          });
+
+          if (ignore) return;
+
+          if (response.status !== 200 || !Array.isArray(response.data)) {
+            throw new Error("Unable to verify assigned patient response.");
+          }
+
+          setPatients(response.data);
+        } catch (error) {
+          if (ignore) return;
+          const message = getApiErrorMessage(error, "Unable to load active patients.");
+          setPatientsError(message);
+          toast.error(message);
+        } finally {
+          if (!ignore) setIsPatientsLoading(false);
+        }
+      };
+
+      await Promise.allSettled([loadAppointments(), loadPatients()]);
 
       if (ignore) return;
 
-      if (appointmentsResult.status === "fulfilled") {
-        setAppointments(appointmentsResult.value.data.sort(compareAppointmentsByTime));
-      } else {
-        const message = getApiErrorMessage(
-          appointmentsResult.reason,
-          "Unable to load therapy schedule.",
-        );
-        setScheduleError(message);
-        toast.error(message);
-      }
-
-      if (patientsResult.status === "fulfilled") {
-        setPatients(patientsResult.value.data);
-      } else {
-        const message = getApiErrorMessage(
-          patientsResult.reason,
-          "Unable to load active patients.",
-        );
-        setPatientsError(message);
-        toast.error(message);
-      }
-
-      setIsScheduleLoading(false);
-      setIsPatientsLoading(false);
       setIsHydrating(false);
       if (loadingToast) toast.dismiss(loadingToast);
     };
@@ -309,7 +340,7 @@ function DoctorDashboard() {
       const message = getApiErrorMessage(error, "Unable to load today's clinic.");
       setScheduleError(message);
       setPatientsError(message);
-      setIsScheduleLoading(false);
+      setIsFetchingData(false);
       setIsPatientsLoading(false);
       setIsHydrating(false);
       if (loadingToast) toast.dismiss(loadingToast);
@@ -327,7 +358,7 @@ function DoctorDashboard() {
   const stats = [
     {
       label: "Today's sessions",
-      value: isScheduleLoading ? "..." : appointments.length.toString(),
+      value: isFetchingData ? "..." : appointments.length.toString(),
       icon: CalendarDays,
       tone: "primary",
     },
@@ -465,7 +496,7 @@ function DoctorDashboard() {
           <TabsContent value="schedule">
             <ScheduleView
               appointments={appointments}
-              isLoading={isScheduleLoading}
+              isFetchingData={isFetchingData}
               error={scheduleError}
               onCancel={handleCancelAppointment}
               onStatusChange={handleStatusChange}
@@ -517,19 +548,37 @@ function DoctorHydrationScreen() {
 
 function ScheduleView({
   appointments,
-  isLoading,
+  isFetchingData,
   error,
   onCancel,
   onStatusChange,
 }: {
   appointments: Appointment[];
-  isLoading: boolean;
+  isFetchingData: boolean;
   error: string | null;
   onCancel: (id: string) => void;
   onStatusChange: (id: string, treatmentStatus: TreatmentStatus) => void;
 }) {
-  const hours = Array.from({ length: 11 }, (_, i) => 8 + i); // 8–18
-  const nextAppointment = useMemo(() => getNextAppointment(appointments), [appointments]);
+  const isScheduleLocked = isFetchingData;
+  const nextAppointment = useMemo(
+    () => (isScheduleLocked ? null : getNextAppointment(appointments)),
+    [appointments, isScheduleLocked],
+  );
+  const roomData = useMemo(
+    () => (isScheduleLocked ? [] : roomUtilisation(appointments)),
+    [appointments, isScheduleLocked],
+  );
+  const timelineSlots = useMemo(
+    () => (isScheduleLocked ? [] : buildTimelineSlots(appointments)),
+    [appointments, isScheduleLocked],
+  );
+  const appointmentsByTimelineSlot = useMemo(
+    () =>
+      isScheduleLocked
+        ? new Map<string, Appointment[]>()
+        : groupAppointmentsByTimelineSlot(appointments),
+    [appointments, isScheduleLocked],
+  );
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
@@ -540,12 +589,8 @@ function ScheduleView({
             Auto-conflict guard ON
           </Badge>
         </div>
-        {isLoading ? (
-          <div className="grid min-h-72 place-items-center rounded-xl border border-dashed border-border bg-muted/30 text-sm text-muted-foreground">
-            <span className="inline-flex items-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin" /> Loading schedule...
-            </span>
-          </div>
+        {isScheduleLocked ? (
+          <DailyTimelineSkeleton />
         ) : error ? (
           <div className="grid min-h-72 place-items-center rounded-xl border border-dashed border-border bg-muted/30 px-4 text-center text-sm text-muted-foreground">
             {error}
@@ -556,12 +601,12 @@ function ScheduleView({
           </div>
         ) : (
           <div className="relative grid grid-cols-[60px_1fr] gap-2">
-            {hours.map((h) => {
-              const slotApps = appointments.filter((a) => getAppointmentHour(a) === h);
+            {timelineSlots.map((slot) => {
+              const slotApps = appointmentsByTimelineSlot.get(slot.key) ?? [];
               return (
-                <div key={h} className="contents">
+                <div key={slot.key} className="contents">
                   <div className="border-t border-border pt-1.5 text-xs text-muted-foreground">
-                    {String(h).padStart(2, "0")}:00
+                    {slot.label}
                   </div>
                   <div className="min-h-14 border-t border-border pt-1.5">
                     <div className="space-y-1.5">
@@ -583,40 +628,155 @@ function ScheduleView({
       </Card>
 
       <div className="space-y-6">
-        <NextSessionCard appointment={nextAppointment} />
+        {isScheduleLocked ? (
+          <NextSessionSkeleton />
+        ) : (
+          <NextSessionCard appointment={nextAppointment} />
+        )}
 
         <Card className="p-5">
           <h2 className="font-display text-xl font-semibold">Room utilisation</h2>
           <p className="text-sm text-muted-foreground">Booked minutes per therapy room today</p>
           <div className="mt-5 h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={roomUtilisation(appointments)}>
-                <CartesianGrid
-                  stroke="var(--color-border)"
-                  strokeDasharray="3 3"
-                  vertical={false}
-                />
-                <XAxis
-                  dataKey="room"
-                  tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }}
-                />
-                <YAxis tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} />
-                <Tooltip
-                  cursor={{ fill: "var(--color-muted)" }}
-                  contentStyle={{
-                    background: "var(--color-card)",
-                    border: "1px solid var(--color-border)",
-                    borderRadius: 12,
-                  }}
-                />
-                <Bar dataKey="minutes" fill="var(--color-primary)" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            {isScheduleLocked ? (
+              <RoomUtilisationSkeleton />
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={roomData}>
+                  <CartesianGrid
+                    stroke="var(--color-border)"
+                    strokeDasharray="3 3"
+                    vertical={false}
+                  />
+                  <XAxis
+                    dataKey="room"
+                    tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }}
+                  />
+                  <YAxis tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} />
+                  <Tooltip
+                    cursor={{ fill: "var(--color-muted)" }}
+                    contentStyle={{
+                      background: "var(--color-card)",
+                      border: "1px solid var(--color-border)",
+                      borderRadius: 12,
+                    }}
+                  />
+                  <Bar dataKey="minutes" fill="var(--color-primary)" radius={[8, 8, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </Card>
       </div>
     </div>
   );
+}
+
+function DailyTimelineSkeleton() {
+  return (
+    <div
+      aria-busy="true"
+      className="min-h-72 rounded-xl border border-dashed border-border bg-muted/30 p-4"
+    >
+      <div className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        Syncing MongoDB appointments...
+      </div>
+      <div className="grid grid-cols-[60px_1fr] gap-2">
+        {TIMELINE_SKELETON_ROWS.map((row) => (
+          <div key={row} className="contents">
+            <Skeleton className="mt-1 h-3 w-11" />
+            <div className="border-t border-border pt-2">
+              <Skeleton className="h-12 w-full rounded-xl" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function NextSessionSkeleton() {
+  return (
+    <Card className="p-5" aria-busy="true">
+      <Skeleton className="h-3 w-24" />
+      <Skeleton className="mt-4 h-7 w-48" />
+      <Skeleton className="mt-3 h-4 w-64 max-w-full" />
+      <Skeleton className="mt-6 h-2 w-full" />
+    </Card>
+  );
+}
+
+function RoomUtilisationSkeleton() {
+  return (
+    <div aria-busy="true" className="flex h-full items-end gap-3 px-2 pb-2">
+      {[72, 124, 96, 152, 112].map((height, index) => (
+        <Skeleton key={index} className="flex-1 rounded-t-xl" style={{ height }} />
+      ))}
+    </div>
+  );
+}
+
+function buildTimelineSlots(appointments: Appointment[]): TimelineSlot[] {
+  const hours = new Set(DEFAULT_TIMELINE_HOURS);
+  let hasUnscheduledAppointment = false;
+
+  appointments.forEach((appointment) => {
+    const hour = getAppointmentHour(appointment);
+
+    if (hour === null) {
+      hasUnscheduledAppointment = true;
+      return;
+    }
+
+    hours.add(hour);
+  });
+
+  const slots = Array.from(hours)
+    .sort((a, b) => a - b)
+    .map((hour) => ({
+      key: getTimelineHourKey(hour),
+      label: formatTimelineHour(hour),
+    }));
+
+  if (hasUnscheduledAppointment) {
+    slots.push({
+      key: UNSCHEDULED_TIMELINE_SLOT,
+      label: "Time pending",
+    });
+  }
+
+  return slots;
+}
+
+function groupAppointmentsByTimelineSlot(appointments: Appointment[]) {
+  const appointmentsBySlot = new Map<string, Appointment[]>();
+
+  appointments.forEach((appointment) => {
+    const slotKey = getAppointmentTimelineSlotKey(appointment);
+    const slotAppointments = appointmentsBySlot.get(slotKey) ?? [];
+    slotAppointments.push(appointment);
+    appointmentsBySlot.set(slotKey, slotAppointments);
+  });
+
+  appointmentsBySlot.forEach((slotAppointments) => {
+    slotAppointments.sort(compareAppointmentsByTime);
+  });
+
+  return appointmentsBySlot;
+}
+
+function getAppointmentTimelineSlotKey(appointment: Appointment) {
+  const hour = getAppointmentHour(appointment);
+  return hour === null ? UNSCHEDULED_TIMELINE_SLOT : getTimelineHourKey(hour);
+}
+
+function getTimelineHourKey(hour: number) {
+  return `hour-${hour}`;
+}
+
+function formatTimelineHour(hour: number) {
+  return `${String(hour).padStart(2, "0")}:00`;
 }
 
 function NextSessionCard({ appointment }: { appointment: Appointment | null }) {
@@ -921,12 +1081,25 @@ function timeSlotToMinutes(timeSlot: string) {
   return Number(twentyFourHour[1]) * 60 + Number(twentyFourHour[2]);
 }
 
+function getAppointmentStartMinutes(appointment: Appointment) {
+  return timeSlotToMinutes(appointment.timeSlot ?? appointment.time);
+}
+
 function compareAppointmentsByTime(a: Appointment, b: Appointment) {
-  return timeSlotToMinutes(a.timeSlot ?? a.time) - timeSlotToMinutes(b.timeSlot ?? b.time);
+  const left = getAppointmentStartMinutes(a);
+  const right = getAppointmentStartMinutes(b);
+
+  if (!Number.isFinite(left) && !Number.isFinite(right)) return 0;
+  if (!Number.isFinite(left)) return 1;
+  if (!Number.isFinite(right)) return -1;
+
+  return left - right;
 }
 
 function getAppointmentHour(appointment: Appointment) {
-  return Math.floor(timeSlotToMinutes(appointment.timeSlot ?? appointment.time) / 60);
+  const startMinutes = getAppointmentStartMinutes(appointment);
+  if (!Number.isFinite(startMinutes)) return null;
+  return Math.floor(startMinutes / 60);
 }
 
 function getNextAppointment(appointments: Appointment[]) {
@@ -937,9 +1110,10 @@ function getNextAppointment(appointments: Appointment[]) {
     .sort(compareAppointmentsByTime);
 
   return (
-    actionable.find(
-      (appointment) => timeSlotToMinutes(appointment.timeSlot ?? appointment.time) >= nowMinutes,
-    ) ??
+    actionable.find((appointment) => {
+      const startMinutes = getAppointmentStartMinutes(appointment);
+      return Number.isFinite(startMinutes) && startMinutes >= nowMinutes;
+    }) ??
     actionable.find((appointment) => appointment.treatmentStatus === "ongoing") ??
     null
   );
@@ -1299,15 +1473,21 @@ function InsightsView({ appointments }: { appointments: Appointment[] }) {
 function sessionsByHour(appointments: Appointment[]) {
   const buckets = new Map<string, { hour: string; sessions: number; minutes: number }>();
   appointments.forEach((appointment) => {
-    const startMinutes = timeSlotToMinutes(appointment.timeSlot ?? appointment.time);
-    const hour = `${String(Math.floor(startMinutes / 60)).padStart(2, "0")}:00`;
+    const startMinutes = getAppointmentStartMinutes(appointment);
+    const hour = Number.isFinite(startMinutes)
+      ? formatTimelineHour(Math.floor(startMinutes / 60))
+      : "Time pending";
     const existing = buckets.get(hour) ?? { hour, sessions: 0, minutes: 0 };
     existing.sessions += 1;
     existing.minutes += appointment.duration;
     buckets.set(hour, existing);
   });
 
-  return Array.from(buckets.values()).sort((a, b) => a.hour.localeCompare(b.hour));
+  return Array.from(buckets.values()).sort((a, b) => {
+    if (a.hour === "Time pending") return 1;
+    if (b.hour === "Time pending") return -1;
+    return a.hour.localeCompare(b.hour);
+  });
 }
 
 /* ---------- Notifications ---------- */
