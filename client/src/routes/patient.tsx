@@ -135,7 +135,7 @@ interface PatientNotification {
 
 function PatientDashboard() {
   const navigate = useNavigate();
-  const [patientSession, setPatientSession] = useState<SessionUser | null>(getSession());
+  const [patientSession, setPatientSession] = useState<SessionUser | null>(null);
   const [appointments, setAppointments] = useState<PatientAppointment[]>([]);
   const [notifications] = useState<PatientNotification[]>([]);
   const [isLoadingAppointments, setIsLoadingAppointments] = useState(true);

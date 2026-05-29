@@ -2,6 +2,7 @@
   "name": "dharma-flow-server",
   "version": "1.0.0",
   "main": "dist/server.js",
+  "type": "module",
   "scripts": {
     "dev": "ts-node src/server.ts",
     "build": "tsc -p tsconfig.json",
@@ -11,6 +12,7 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "@vercel/node": "^3.0.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",

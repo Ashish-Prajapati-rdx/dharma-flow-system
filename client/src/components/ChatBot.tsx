@@ -14,7 +14,8 @@ interface ChatbotResponse {
   response: string;
 }
 
-const CHATBOT_API_URL = "http://localhost:5000/api/chatbot";
+// Use relative path - works both in dev and production
+const CHATBOT_API_URL = "/api/chatbot";
 
 export function ChatBot() {
   const [isOpen, setIsOpen] = useState(false);

@@ -55,7 +55,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import toast from "react-hot-toast";
 import { getSession, type SessionUser } from "@/lib/auth";
 
-const API_BASE_URL = "http://localhost:5000/api";
+// Use relative paths - works both in dev and production
+const API_BASE_URL = "/api";
 const APPOINTMENTS_API_URL = `${API_BASE_URL}/appointments`;
 const DEFAULT_TIMELINE_HOURS = Array.from({ length: 11 }, (_, i) => 8 + i);
 const TIMELINE_SKELETON_ROWS = Array.from({ length: 6 }, (_, i) => i);
