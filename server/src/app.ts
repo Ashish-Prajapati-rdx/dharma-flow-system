@@ -1,9 +1,9 @@
 import express from "express";
-import authRoutes from "./routes/auth";
-import therapyRoutes from "./routes/therapy";
-import appointmentsRoutes from "./routes/appointments";
-import userRoutes from "./routes/users";
-import chatbotRoutes from "./routes/chatbotRoutes";
+import authRoutes from "./routes/auth.js";
+import therapyRoutes from "./routes/therapy.js";
+import appointmentsRoutes from "./routes/appointments.js";
+import userRoutes from "./routes/users.js";
+import chatbotRoutes from "./routes/chatbotRoutes.js";
 import cors from "cors";
 
 const app = express();

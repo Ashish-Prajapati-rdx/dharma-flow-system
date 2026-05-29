@@ -5,7 +5,7 @@ import {
   normalizeTimeSlot,
   timeSlotToMinutes,
   timeSlotToTwentyFourHour,
-} from "../utils/appointmentTime";
+} from "../utils/appointmentTime.js";
 
 export type TreatmentStatus = "scheduled" | "ongoing" | "completed" | "missed";
 

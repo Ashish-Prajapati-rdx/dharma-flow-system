@@ -1,6 +1,6 @@
-import { sendEmail } from "../utils/emailService";
+import { sendEmail } from "../utils/emailService.js";
 import type { RequestHandler } from "express";
-import User, { type UserRole } from "../models/User";
+import User, { type UserRole } from "../models/User.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
@@ -58,7 +58,7 @@ export const register: RequestHandler = async (req, res) => {
             <p style="font-size: 12px; color: #9ca3af; text-align: center;">Automated notification from AyurSutra Suite for SIH.</p>
           </div>
         `,
-      }).catch((err) =>
+      }).catch((err: unknown) =>
         console.error(" Background email dispatch failed:", err),
       );
     });

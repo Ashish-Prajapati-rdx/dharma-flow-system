@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import dotenv from "dotenv";
 
 // Load environment variables
-dotenv.config();
+dotenv.config({ quiet: true });
 
 import express from "express";
 import cors from "cors";
@@ -45,18 +45,18 @@ const connectDB = async () => {
 };
 
 // Import routes from server
-import authRoutes from "../server/src/routes/auth";
-import appointmentRoutes from "../server/src/routes/appointments";
-import userRoutes from "../server/src/routes/users";
-import therapyRoutes from "../server/src/routes/therapy";
-import chatbotRoutes from "../server/src/routes/chatbotRoutes";
+import authRoutes from "../server/src/routes/auth.js";
+import appointmentRoutes from "../server/src/routes/appointments.js";
+import userRoutes from "../server/src/routes/users.js";
+import therapyRoutes from "../server/src/routes/therapy.js";
+import chatbotRoutes from "../server/src/routes/chatbotRoutes.js";
 
 // API Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/appointments", appointmentRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/therapy", therapyRoutes);
-app.use("/api/chatbot", chatbotRoutes);
+app.use(chatbotRoutes);
 
 // Health check
 app.get("/api/health", (req, res) => {

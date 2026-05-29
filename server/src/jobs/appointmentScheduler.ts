@@ -1,7 +1,7 @@
-import Therapy, { type ITherapy } from "../models/Therapy";
-import User from "../models/User";
-import { formatSystemDate } from "../utils/appointmentTime";
-import { queueAppointmentNotificationEmail } from "../utils/emailService";
+import Therapy, { type ITherapy } from "../models/Therapy.js";
+import User from "../models/User.js";
+import { formatSystemDate } from "../utils/appointmentTime.js";
+import { queueAppointmentNotificationEmail } from "../utils/emailService.js";
 
 let schedulerHandle: NodeJS.Timeout | null = null;
 
@@ -113,4 +113,3 @@ export const startAppointmentScheduler = (): void => {
   setTimeout(tick, 5 * 1000).unref?.();
   console.log("Appointment scheduler started");
 };
-

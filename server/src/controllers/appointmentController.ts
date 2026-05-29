@@ -3,8 +3,8 @@ import mongoose from "mongoose";
 import Therapy, {
   type ITherapy,
   type TreatmentStatus,
-} from "../models/Therapy";
-import User from "../models/User";
+} from "../models/Therapy.js";
+import User from "../models/User.js";
 import {
   buildSlotLocks,
   formatSystemDate,
@@ -12,8 +12,8 @@ import {
   normalizeTimeSlot,
   timeSlotToMinutes,
   timeSlotToTwentyFourHour,
-} from "../utils/appointmentTime";
-import { queueAppointmentNotificationEmail } from "../utils/emailService";
+} from "../utils/appointmentTime.js";
+import { queueAppointmentNotificationEmail } from "../utils/emailService.js";
 
 const ACTIVE_TREATMENT_STATUSES: TreatmentStatus[] = ["scheduled", "ongoing"];
 const POPULATE_PATIENT =

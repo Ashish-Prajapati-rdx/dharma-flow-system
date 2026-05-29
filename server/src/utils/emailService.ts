@@ -1,13 +1,7 @@
 import nodemailer from "nodemailer";
-import { getTreatmentInstructions } from "./treatmentInstructions";
+import { getTreatmentInstructions } from "./treatmentInstructions.js";
 
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+let transporter: ReturnType<typeof nodemailer.createTransport> | null = null;
 
 interface EmailOptions {
   to: string;
@@ -15,16 +9,49 @@ interface EmailOptions {
   html: string;
 }
 
+const getEmailCredentials = ():
+  | { user: string; pass: string }
+  | null => {
+  const user = process.env.EMAIL_USER?.trim();
+  const pass =
+    process.env.EMAIL_PASS?.trim() ?? process.env.EMAIL_PASSWORD?.trim();
+
+  if (!user || !pass) return null;
+  return { user, pass };
+};
+
+const getTransporter = () => {
+  const credentials = getEmailCredentials();
+  if (!credentials) return null;
+
+  transporter ??= nodemailer.createTransport({
+    service: "gmail",
+    auth: credentials,
+  });
+
+  return transporter;
+};
+
 export const sendEmail = async ({ to, subject, html }: EmailOptions) => {
   try {
+    const credentials = getEmailCredentials();
+    const mailTransporter = getTransporter();
+
+    if (!credentials || !mailTransporter) {
+      console.warn(
+        "Email skipped: EMAIL_USER and EMAIL_PASS must be configured.",
+      );
+      return false;
+    }
+
     const mailOptions = {
-      from: `"AyurSutra Support" <${process.env.EMAIL_USER}>`,
+      from: `"AyurSutra Support" <${credentials.user}>`,
       to,
       subject,
       html,
     };
 
-    const info = await transporter.sendMail(mailOptions);
+    const info = await mailTransporter.sendMail(mailOptions);
     console.log("📨 Email sent successfully: %s", info.messageId);
     return true;
   } catch (error) {

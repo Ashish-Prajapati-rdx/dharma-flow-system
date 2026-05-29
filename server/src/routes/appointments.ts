@@ -7,7 +7,7 @@ import {
   getPatientAppointments,
   updateAppointmentStatus,
   upsertAppointmentProgress,
-} from "../controllers/appointmentController";
+} from "../controllers/appointmentController.js";
 
 const router = Router();
 

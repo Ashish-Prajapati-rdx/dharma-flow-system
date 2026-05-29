@@ -1,8 +1,8 @@
 import { Router, type RequestHandler } from "express";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
-import { createAppointment } from "../controllers/appointmentController";
-import Therapy from "../models/Therapy";
+import { createAppointment } from "../controllers/appointmentController.js";
+import Therapy from "../models/Therapy.js";
 
 interface AuthTokenPayload {
   userId: string;
