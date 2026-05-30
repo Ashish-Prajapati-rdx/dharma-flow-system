@@ -52,8 +52,8 @@ import {
 } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import toast from "react-hot-toast";
 import { getSession, type SessionUser } from "@/lib/auth";
+import { toast } from "sonner";
 
 // Use relative paths - works both in dev and production
 const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL}/api`;
@@ -238,7 +238,7 @@ function DoctorDashboard() {
 
   useEffect(() => {
     let ignore = false;
-    let loadingToast: string | undefined;
+    let loadingToast: string | number | undefined;
 
     if (!session) {
       setIsHydrating(true);
