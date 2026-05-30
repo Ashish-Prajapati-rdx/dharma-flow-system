@@ -56,7 +56,7 @@ import toast from "react-hot-toast";
 import { getSession, type SessionUser } from "@/lib/auth";
 
 // Use relative paths - works both in dev and production
-const API_BASE_URL = "/api";
+const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL}/api`;
 const APPOINTMENTS_API_URL = `${API_BASE_URL}/appointments`;
 const DEFAULT_TIMELINE_HOURS = Array.from({ length: 11 }, (_, i) => 8 + i);
 const TIMELINE_SKELETON_ROWS = Array.from({ length: 6 }, (_, i) => i);
@@ -386,7 +386,7 @@ function DoctorDashboard() {
   const handleCancelAppointment = async (id: string) => {
     try {
       const headers = authHeaders(session);
-      await axios.delete(`/api/appointments/${id}`, { headers });
+      await axios.delete(`${API_BASE_URL}/api/appointments/${id}`, { headers });
       setAppointments((prev) => prev.filter((a) => a._id !== id));
       toast.success("Appointment cancelled successfully.");
     } catch (error) {
@@ -398,7 +398,7 @@ function DoctorDashboard() {
     try {
       const headers = authHeaders(session);
       const { data } = await axios.patch<Appointment>(
-        `/api/appointments/${id}/status`,
+        `${API_BASE_URL}/api/appointments/${id}/status`,
         { treatmentStatus },
         { headers },
       );
@@ -918,7 +918,7 @@ function NewAppointmentDialog({
 
     try {
       const { data } = await axios.post<Appointment>(
-        "/api/appointments/new",
+        `${API_BASE_URL}/api/appointments/new`,
         {
           patientId,
           doctorId: doctor.id,

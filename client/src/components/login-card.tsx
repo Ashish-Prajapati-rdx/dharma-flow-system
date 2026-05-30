@@ -42,12 +42,20 @@ export function LoginCard({ role }: { role: Role }) {
     }
     try {
       if (mode === "signup") {
-        await axios.post("/api/auth/register", { name, email, password, role });
+        await axios.post(`${import.meta.env.VITE_API_BASE_URL}/api/auth/register`, {
+          name,
+          email,
+          password,
+          role,
+        });
         toast.success("Registration successful! Please sign in.");
         setMode("signin");
         return;
       } else {
-        const { data } = await axios.post<LoginResponse>("/api/auth/login", { email, password });
+        const { data } = await axios.post<LoginResponse>(
+          `${import.meta.env.VITE_API_BASE_URL}/api/auth/login`,
+          { email, password },
+        );
         if (data.role !== role) {
           throw new Error(`Please use the ${data.role} portal for this account.`);
         }

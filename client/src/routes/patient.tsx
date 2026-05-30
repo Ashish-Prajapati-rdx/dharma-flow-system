@@ -161,9 +161,12 @@ function PatientDashboard() {
     setAppointmentsError(null);
 
     axios
-      .get<PatientAppointment[]>(`/api/appointments/patient/${s.id}`, {
-        headers: authHeaders(s),
-      })
+      .get<PatientAppointment[]>(
+        `${import.meta.env.VITE_API_BASE_URL}/api/appointments/patient/${s.id}`,
+        {
+          headers: authHeaders(s),
+        },
+      )
       .then(({ data }) => {
         if (ignore) return;
         setAppointments(data.sort(comparePatientAppointments));
@@ -673,7 +676,7 @@ function SymptomForm({
     setIsSubmitting(true);
     try {
       const { data } = await axios.post<PatientAppointment>(
-        `/api/appointments/${appointment._id}/progress`,
+        `${import.meta.env.VITE_API_BASE_URL}/api/appointments/${appointment._id}/progress`,
         {
           energyLevel: energy[0],
           sleepQuality: sleep[0],
