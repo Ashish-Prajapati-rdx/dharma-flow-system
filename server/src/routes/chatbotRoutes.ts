@@ -3,6 +3,6 @@ import { handleChat } from "../controllers/chatbotController.js";
 
 const router = Router();
 
-router.post("/api/chatbot", handleChat);
+router.post("/chatbot", handleChat);
 
 export default router;

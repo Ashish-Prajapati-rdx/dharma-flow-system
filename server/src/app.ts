@@ -18,7 +18,7 @@ app.use("/api/therapy", therapyRoutes);
 app.use("/api/appointments", appointmentsRoutes);
 app.use("/api", userRoutes);
 app.use("/api/users", userRoutes);
-app.use(chatbotRoutes);
+app.use("/api", chatbotRoutes);
 
 app.get("/", (_req, res) => {
   res.send("API is running");
