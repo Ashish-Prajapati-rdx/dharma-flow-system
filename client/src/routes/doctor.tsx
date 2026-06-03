@@ -386,7 +386,7 @@ function DoctorDashboard() {
   const handleCancelAppointment = async (id: string) => {
     try {
       const headers = authHeaders(session);
-      await axios.delete(`${API_BASE_URL}/api/appointments/${id}`, { headers });
+      await axios.delete(`${APPOINTMENTS_API_URL}/${id}`, { headers });
       setAppointments((prev) => prev.filter((a) => a._id !== id));
       toast.success("Appointment cancelled successfully.");
     } catch (error) {
@@ -398,7 +398,7 @@ function DoctorDashboard() {
     try {
       const headers = authHeaders(session);
       const { data } = await axios.patch<Appointment>(
-        `${API_BASE_URL}/api/appointments/${id}/status`,
+        `${APPOINTMENTS_API_URL}/${id}/status`,
         { treatmentStatus },
         { headers },
       );
@@ -918,7 +918,7 @@ function NewAppointmentDialog({
 
     try {
       const { data } = await axios.post<Appointment>(
-        `${API_BASE_URL}/api/appointments/new`,
+        `${APPOINTMENTS_API_URL}/new`,
         {
           patientId,
           doctorId: doctor.id,
