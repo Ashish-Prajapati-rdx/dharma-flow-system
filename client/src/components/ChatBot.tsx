@@ -14,8 +14,8 @@ interface ChatbotResponse {
   response: string;
 }
 
-// Use relative path - works both in dev and production
-const CHATBOT_API_URL = "/api/chatbot";
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
+const CHATBOT_API_URL = `${API_BASE_URL}/api/chatbot`;
 
 export function ChatBot() {
   const [isOpen, setIsOpen] = useState(false);
@@ -114,7 +114,7 @@ export function ChatBot() {
             </Button>
           </header>
 
-          <div className="flex-1 overflow-y-auto bg-gradient-to-b from-emerald-50/70 via-background to-background px-4 py-4">
+          <div className="flex-1 overflow-y-auto bg-linear-to-b from-emerald-50/70 via-background to-background px-4 py-4">
             <div className="space-y-3">
               {messages.map((message, index) => (
                 <ChatBubble key={`${message.sender}-${index}`} message={message} />
